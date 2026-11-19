@@ -245,13 +245,15 @@ mod tests {
         let mut f = Box::new(Fft::empty());
         f.setup(n);
         f.analyse_ring(ring.as_ptr(), n, 0);
-        let (mut best, mut bp) = (0, 0f32);
-        for k in 0..=n / 2 {
-            if f.power[k] > bp {
-                bp = f.power[k];
-                best = k;
-            }
-        }
+        let (best, bp) =
+            f.power[..=n / 2]
+                .iter()
+                .copied()
+                .enumerate()
+                .fold(
+                    (0, 0f32),
+                    |(bk, bv), (k, v)| if v > bv { (k, v) } else { (bk, bv) },
+                );
         let bin_hz = sr / n as f64;
         assert!(
             ((best as f64 * bin_hz) - freq).abs() < bin_hz,

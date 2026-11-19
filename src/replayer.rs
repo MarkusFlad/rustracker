@@ -955,8 +955,8 @@ mod tests {
         b[1084] = 0x01;
         b[1085] = (428u16 & 0xFF) as u8;
         b[1086] = 0x10;
-        for i in 0..64 {
-            b[1084 + 1024 + i] = if i < 32 { 100 } else { 156 };
+        for (i, v) in b[1084 + 1024..].iter_mut().enumerate() {
+            *v = if i < 32 { 100 } else { 156 };
         }
         b
     }
@@ -986,8 +986,8 @@ mod tests {
         };
         for _ in 0..30 {
             let mut b = tiny_mod();
-            for i in 0..1024 {
-                b[1084 + i] = (rnd() & 0xFF) as u8;
+            for v in b[1084..1084 + 1024].iter_mut() {
+                *v = (rnd() & 0xFF) as u8;
             }
             let mut p = Player::empty();
             assert!(p.load(b.as_ptr(), b.len(), 48000.0) > 0);
