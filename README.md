@@ -1,5 +1,7 @@
 # Rust MOD Tracker (WebAssembly) mit Oszilloskop
 
+[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+
 ProTracker-MOD-Player, geschrieben in Rust ohne externe Crates. Er wird zu WebAssembly
 kompiliert und spielt im Browser über ein AudioWorklet ab. Dazu gibt es ein Oszilloskop
 (Master L/R, XY-Lissajous und eine Spur pro Kanal) und eine Pattern-Ansicht wie in einem Tracker.
@@ -17,7 +19,7 @@ Voraussetzung für den Build: rustup/cargo und Python 3 (für den lokalen Webser
 das Target `wasm32-unknown-unknown`, falls es fehlt. wasm-bindgen oder wasm-pack werden
 nicht gebraucht.
 
-Im Browser auf **Play** tippen. Standard-Song ist „12th Warrior“ von Dr. Awesome (`www/12th_warrior.mod`, vom Nutzer bereitgestellt). Außerdem liegen „Orbitalfunk“ (`www/orbitalfunk.mod`) und „November Static“ (`www/november_static.mod`) bei. Eigene `.mod`-Dateien lassen sich über **Datei …** oder per
+Im Browser auf **Play** tippen. Standard-Song ist „Neon Techno“ von Drozerix (`www/drozerix_-_neon_techno.mod`, Public Domain, siehe [CREDITS.md](CREDITS.md)). Daneben liegen die eigenen Stücke „Orbitalfunk“ und „November Static“. Einen anderen Standard-Song bettest du mit `python3 scripts/embed_song.py <datei.mod>` in `www/song.js` ein. Fremde Module bitte nicht committen; `.gitignore` hält `www/12th_warrior.mod` heraus. Eigene `.mod`-Dateien lassen sich über **Datei …** oder per
 Drag & Drop laden. Wenn du auf eine Position in der Order-Liste tippst, springt der Player dorthin.
 
 ### Ohne wasm32-Target bauen
@@ -116,3 +118,26 @@ die jedes Bild neu gezeichnet wird:
 
 Der Würfel dreht sich um zwei Achsen, sodass nach und nach jede Seite nach vorne kommt. Auf
 jedem Schlag pulsiert er leicht, auf der Eins jedes Takts etwas stärker.
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` läuft bei jedem Push und Pull Request:
+
+| Job | Prüft |
+|---|---|
+| **Rust** | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, natives Rendern beider Songs |
+| **WebAssembly** | Build mit `cargo` für `wasm32-unknown-unknown` **und** über `preview/minicore.rs`. Der zweite Build stellt sicher, dass Replayer, FFT und API weiterhin nur den Sprachkern nutzen. Danach läuft `tests/wasm_smoke.mjs` in Node: Exporte, Laden, Klang, FFT und Vergleich mit dem nativen Rendern (±2 LSB). Zum Schluss werden die Skripte der Seite geprüft und die Seite als Artefakt gebaut. |
+| **Songs** | Erzeugt beide Songs neu aus `songs/*.py` und prüft, dass der Rust-Player sie abspielt |
+| **Pages** | Nur bei Push auf `main`: veröffentlicht die Demo-Seite mit „Neon Techno“ auf GitHub Pages |
+
+Für GitHub Pages musst du einmalig unter *Settings → Pages → Source* „GitHub Actions“ wählen.
+Im Badge oben `OWNER/REPO` durch den echten Repo-Pfad ersetzen.
+
+Lokal laufen dieselben Prüfungen mit:
+
+```sh
+cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+cargo build --release --target wasm32-unknown-unknown --lib
+cargo run --release --bin mod2wav -- www/drozerix_-_neon_techno.mod /tmp/native.wav 10
+node tests/wasm_smoke.mjs target/wasm32-unknown-unknown/release/modplayer.wasm www/drozerix_-_neon_techno.mod /tmp/native.wav
+```

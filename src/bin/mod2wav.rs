@@ -19,7 +19,10 @@ fn main() {
         eprintln!("cannot parse MOD (error {n})");
         std::process::exit(2);
     }
-    println!("channels: {}, song length: {}", player.channels, player.song_len);
+    println!(
+        "channels: {}, song length: {}",
+        player.channels, player.song_len
+    );
 
     let frames = 1024;
     let mut buf = vec![0f32; 2 * frames];
@@ -30,7 +33,11 @@ fn main() {
         pcm.extend(buf.iter().map(|v| (v.clamp(-1.0, 1.0) * 32767.0) as i16));
     }
     let peak = pcm.iter().map(|v| v.unsigned_abs()).max().unwrap_or(0);
-    println!("rendered {:.1} s, peak {}", pcm.len() as f32 / 2.0 / sr as f32, peak);
+    println!(
+        "rendered {:.1} s, peak {}",
+        pcm.len() as f32 / 2.0 / sr as f32,
+        peak
+    );
 
     let mut f = std::fs::File::create(&args[2]).expect("create wav");
     let data_len = (pcm.len() * 2) as u32;

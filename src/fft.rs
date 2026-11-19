@@ -29,8 +29,19 @@ pub fn sin(x: f64) -> f64 {
         x = 0.0 - PI - x;
     }
     let x2 = x * x;
-    x * (1.0 - x2 / 6.0 * (1.0 - x2 / 20.0 * (1.0 - x2 / 42.0 * (1.0 - x2 / 72.0
-        * (1.0 - x2 / 110.0 * (1.0 - x2 / 156.0 * (1.0 - x2 / 210.0 * (1.0 - x2 / 272.0))))))))
+    x * (1.0
+        - x2 / 6.0
+            * (1.0
+                - x2 / 20.0
+                    * (1.0
+                        - x2 / 42.0
+                            * (1.0
+                                - x2 / 72.0
+                                    * (1.0
+                                        - x2 / 110.0
+                                            * (1.0
+                                                - x2 / 156.0
+                                                    * (1.0 - x2 / 210.0 * (1.0 - x2 / 272.0))))))))
 }
 
 pub fn cos(x: f64) -> f64 {
@@ -196,7 +207,14 @@ mod tests {
         let n = 256;
         let mut f = Box::new(Fft::empty());
         assert!(f.setup(n));
-        let input: Vec<(f32, f32)> = (0..n).map(|i| (((i * 37) % 17) as f32 / 8.0 - 1.0, ((i * 11) % 7) as f32 / 4.0 - 0.7)).collect();
+        let input: Vec<(f32, f32)> = (0..n)
+            .map(|i| {
+                (
+                    ((i * 37) % 17) as f32 / 8.0 - 1.0,
+                    ((i * 11) % 7) as f32 / 4.0 - 0.7,
+                )
+            })
+            .collect();
         for (i, &(r, im)) in input.iter().enumerate() {
             f.set_input(i, r, im);
         }
@@ -209,7 +227,10 @@ mod tests {
                 si += r as f64 * a.sin() + im as f64 * a.cos();
             }
             let (fr, fi) = f.output(k);
-            assert!((fr as f64 - sr).abs() < 1e-3 && (fi as f64 - si).abs() < 1e-3, "bin {k}: {fr},{fi} vs {sr},{si}");
+            assert!(
+                (fr as f64 - sr).abs() < 1e-3 && (fi as f64 - si).abs() < 1e-3,
+                "bin {k}: {fr},{fi} vs {sr},{si}"
+            );
         }
     }
 
@@ -218,7 +239,9 @@ mod tests {
         let n = 4096;
         let sr = 44100.0f64;
         let freq = 1000.0f64;
-        let ring: Vec<f32> = (0..n).map(|i| (2.0 * std::f64::consts::PI * freq * i as f64 / sr).sin() as f32 * 0.5).collect();
+        let ring: Vec<f32> = (0..n)
+            .map(|i| (2.0 * std::f64::consts::PI * freq * i as f64 / sr).sin() as f32 * 0.5)
+            .collect();
         let mut f = Box::new(Fft::empty());
         f.setup(n);
         f.analyse_ring(ring.as_ptr(), n, 0);
@@ -230,7 +253,10 @@ mod tests {
             }
         }
         let bin_hz = sr / n as f64;
-        assert!(((best as f64 * bin_hz) - freq).abs() < bin_hz, "peak at bin {best}");
+        assert!(
+            ((best as f64 * bin_hz) - freq).abs() < bin_hz,
+            "peak at bin {best}"
+        );
         // amplitude 0.5 -> power ~0.25 (Hann scalloping can lower it a bit)
         assert!(bp > 0.12 && bp < 0.3, "power {bp}");
     }

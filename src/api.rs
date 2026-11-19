@@ -49,7 +49,11 @@ pub extern "C" fn mp_load(len: usize, sample_rate: f32) -> i32 {
 /// Render `frames` (max 4096) stereo frames; returns a pointer to 2*frames f32.
 #[no_mangle]
 pub extern "C" fn mp_render(frames: usize) -> *const f32 {
-    let n = if frames > MAX_FRAMES { MAX_FRAMES } else { frames };
+    let n = if frames > MAX_FRAMES {
+        MAX_FRAMES
+    } else {
+        frames
+    };
     let mix = (&raw mut MIX) as *mut f32;
     player().render(mix, (&raw mut CHAN) as *mut f32, n);
     unsafe {
@@ -125,13 +129,25 @@ pub extern "C" fn mp_set_position(order: u32) {
 
 #[no_mangle]
 pub extern "C" fn mp_set_separation(sep: f32) {
-    let s = if sep < 0.0 { 0.0 } else if sep > 1.0 { 1.0 } else { sep };
+    let s = if sep < 0.0 {
+        0.0
+    } else if sep > 1.0 {
+        1.0
+    } else {
+        sep
+    };
     player().separation = s;
 }
 
 #[no_mangle]
 pub extern "C" fn mp_set_gain(gain: f32) {
-    let g = if gain < 0.0 { 0.0 } else if gain > 2.0 { 2.0 } else { gain };
+    let g = if gain < 0.0 {
+        0.0
+    } else if gain > 2.0 {
+        2.0
+    } else {
+        gain
+    };
     player().gain = g;
 }
 
@@ -144,6 +160,8 @@ pub extern "C" fn mp_spectrum(size: usize) -> *const f32 {
     if !f.setup(size) {
         return 0 as *const f32;
     }
-    f.analyse_ring((&raw const RING) as *const f32, FFT_MAX, unsafe { RING_POS });
+    f.analyse_ring((&raw const RING) as *const f32, FFT_MAX, unsafe {
+        RING_POS
+    });
     (&raw const f.power) as *const f32
 }

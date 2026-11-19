@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # the song used for the checks and for the public demo page (our own composition)
+  DEMO_SONG: www/orbitalfunk.mod
+
+jobs:
+  rust:
+    name: Rust (fmt, clippy, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --release
+      - name: Render the demo songs natively
+        run: |
+          for f in www/orbitalfunk.mod www/november_static.mod; do
+            cargo run --release --quiet --bin mod2wav -- "$f" "/tmp/$(basename "$f" .mod).wav"
+          done
+
+  wasm:
+    name: WebAssembly (cargo + minicore build, Node smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build (cargo, wasm32-unknown-unknown)
+        run: cargo build --release --target wasm32-unknown-unknown --lib
+      - name: Build (preview/minicore.rs, no_core)
+        # checks that replayer/fft/api still only use the core language
+        run: |
+          mkdir -p preview/out
+          RUSTC_BOOTSTRAP=1 rustc --edition 2021 --target wasm32-unknown-unknown --crate-type cdylib \
+            -C opt-level=3 -C panic=abort -C overflow-checks=no -C strip=symbols \
+            -o preview/out/modplayer.wasm preview/minicore.rs
+      - name: Native reference render (10 s)
+        run: cargo run --release --quiet --bin mod2wav -- "$DEMO_SONG" /tmp/native.wav 10
+      - name: Smoke test, cargo build
+        run: node tests/wasm_smoke.mjs target/wasm32-unknown-unknown/release/modplayer.wasm "$DEMO_SONG" /tmp/native.wav
+      - name: Smoke test, minicore build
+        run: node tests/wasm_smoke.mjs preview/out/modplayer.wasm "$DEMO_SONG" /tmp/native.wav
+      - name: Smoke test, committed www/modplayer.wasm
+        run: node tests/wasm_smoke.mjs www/modplayer.wasm "$DEMO_SONG"
+      - name: Check the web page scripts
+        run: |
+          for f in www/worklet.js www/mandel.js; do node --check "$f"; done
+          python3 - <<'EOF'
+          import re, pathlib
+          html = pathlib.Path("www/index.html").read_text()
+          scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
+          pathlib.Path("/tmp/inline.js").write_text("\n".join(scripts))
+          EOF
+          node --check /tmp/inline.js
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          cp www/index.html www/worklet.js www/mandel.js _site/
+          cp target/wasm32-unknown-unknown/release/modplayer.wasm _site/
+          python3 scripts/embed_song.py "$DEMO_SONG" _site/song.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: _site
+
+  songs:
+    name: Songs (regenerate and parse)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install numpy
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Regenerate the songs from their scripts
+        run: |
+          python3 songs/make_space.py /tmp/orbitalfunk.mod
+          python3 songs/make_mod.py /tmp/november_static.mod /tmp/november_preview.wav
+      - name: The Rust player accepts them
+        run: |
+          cargo run --release --quiet --bin mod2wav -- /tmp/orbitalfunk.mod /tmp/a.wav
+          cargo run --release --quiet --bin mod2wav -- /tmp/november_static.mod /tmp/b.wav
+
+  # Publishes the demo page to GitHub Pages on every push to main.
+  # One-time setup: Settings -> Pages -> Source: "GitHub Actions".
+  pages:
+    name: Deploy to GitHub Pages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [rust, wasm, songs]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
