@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rust MOD Tracker · Oszilloskop</title>
+<style>
+  :root {
+    --bg: #07090a; --panel: #0e1213; --line: #1d2a26; --ph: #39ff88; --ph-dim: #1b7a45;
+    --amber: #ffb43a; --text: #b9d8c6; --muted: #5f7a6c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px;
+    border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 14px; margin: 0 10px 0 0; color: var(--ph); letter-spacing: .08em; }
+  button, label.btn { background: #12201a; color: var(--ph); border: 1px solid var(--ph-dim);
+    border-radius: 3px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  button:hover, label.btn:hover { background: #183026; }
+  button:disabled { opacity: .4; cursor: default; }
+  .grow { flex: 1; }
+  .ctl { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  input[type=range] { accent-color: var(--ph); width: 90px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; padding: 12px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+  .box h2 { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--muted); font-weight: normal;
+    letter-spacing: .12em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+  #scope, #mandel, #spec { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; background: #020403; }
+  #mandel, #spec { display: none; background: #000; touch-action: manipulation; }
+  #cubeScene { display: none; position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden;
+    background: radial-gradient(ellipse at center, #0b1712 0%, #020403 70%); perspective: 1100px; }
+  #cube { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; }
+  #cube canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; backface-visibility: hidden;
+    -webkit-backface-visibility: hidden; border: 1px solid rgba(57,255,136,.45); box-shadow: 0 0 18px rgba(57,255,136,.18) inset; }
+  .box.fs #cubeScene { height: 100%; aspect-ratio: auto; }
+  #spec { background: #020403; }
+  .viewbox { position: relative; }
+  #mctl { position: absolute; left: 8px; bottom: 8px; display: none; gap: 6px; flex-wrap: wrap; }
+  #mctl button { background: rgba(10,16,13,.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  #mhud { position: absolute; right: 8px; top: 8px; display: none; font-size: 11px; color: #d8f5e4;
+    background: rgba(0,0,0,.45); padding: 3px 7px; border-radius: 3px; text-align: right; line-height: 1.35; }
+  .box.fs { position: fixed; inset: 0; z-index: 50; border: 0; border-radius: 0; background: #000; }
+  .box.fs h2 { display: none; }
+  .box.fs .viewbox, .box.fs #mandel, .box.fs #spec { width: 100%; height: 100%; aspect-ratio: auto; }
+  .box.fs .viewbox { height: 100vh; }
+  #status { padding: 8px 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px 12px; }
+  #status b { color: var(--ph); font-weight: normal; }
+  #pattern { margin: 0; padding: 8px 10px; white-space: pre; overflow-x: auto; font-size: 12px; line-height: 1.35;
+    color: var(--muted); min-height: 300px; }
+  #pattern .cur { color: #001a0b; background: var(--ph); }
+  #pattern .bar { color: var(--text); }
+  #orders { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; }
+  #orders button { padding: 2px 6px; font-size: 11px; min-width: 30px; }
+  #orders button.on { background: var(--ph); color: #001a0b; }
+  #samples { margin: 0; padding: 8px 10px; white-space: pre; overflow-x: auto; font-size: 12px; color: var(--muted); }
+  #msg { padding: 6px 12px; color: var(--amber); min-height: 1.4em; }
+  .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+  .drop { outline: 2px dashed var(--ph); outline-offset: -6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>▌RUST MOD TRACKER</h1>
+  <button id="play" disabled>▶ Play</button>
+  <button id="stop" disabled>■ Stop</button>
+  <button id="pick" type="button">Datei …</button>
+  <input id="file" type="file" class="vh" tabindex="-1">
+  <span class="grow"></span>
+  <button id="view" type="button">Ansicht: Oszilloskop</button>
+  <label class="ctl"><input id="loop" type="checkbox"> Loop</label>
+  <label class="ctl">Stereo <input id="sep" type="range" min="0" max="100" value="60"></label>
+</header>
+<div id="msg">Lädt WASM …</div>
+<main>
+  <section>
+    <div class="box" id="viewBoxOuter">
+      <h2 id="viewTitle">Oszilloskop · Master L/R · XY · Kanäle</h2>
+      <div class="viewbox">
+        <canvas id="scope"></canvas>
+        <canvas id="mandel"></canvas>
+        <canvas id="spec"></canvas>
+        <div id="cubeScene"><div id="cube">
+          <canvas class="face" data-face="scope"></canvas><canvas class="face" data-face="xy"></canvas>
+          <canvas class="face" data-face="spec2"></canvas><canvas class="face" data-face="spec3"></canvas>
+          <canvas class="face" data-face="notes"></canvas><canvas class="face" data-face="mandel"></canvas>
+        </div></div>
+        <div id="mhud"></div>
+        <div id="mctl">
+          <button id="mEng" type="button" class="monly">Engine: GPU</button>
+          <button id="mPal" type="button" class="monly">Farben</button>
+          <button id="s3d" type="button" class="sonly">Darstellung: 2D</button>
+          <button id="mFs" type="button">Vollbild</button>
+        </div>
+      </div>
+    </div>
+    <div class="box" style="margin-top:12px">
+      <h2>Status</h2>
+      <div id="status"></div>
+    </div>
+    <div class="box" style="margin-top:12px">
+      <h2>Order-Liste (antippen zum Springen)</h2>
+      <div id="orders"></div>
+    </div>
+  </section>
+  <section>
+    <div class="box">
+      <h2>Pattern</h2>
+      <pre id="pattern"></pre>
+    </div>
+    <div class="box" style="margin-top:12px">
+      <h2>Samples</h2>
+      <pre id="samples"></pre>
+    </div>
+  </section>
+</main>
+
+<script src="song.js"></script>
+<script src="mandel.js"></script>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const DEFAULT_SONG = '12th_warrior.mod';
+
+// ------------------------------------------------------------------ MOD parsing (display only)
+const PERIODS = [856,808,762,720,678,640,604,570,538,508,480,453,428,404,381,360,339,320,302,285,269,254,240,226,214,202,190,180,170,160,151,143,135,127,120,113];
+const NAMES = ['C-','C#','D-','D#','E-','F-','F#','G-','G#','A-','A#','B-'];
+function noteName(p) {
+  if (!p) return '---';
+  let best = 0, d = 1e9;
+  PERIODS.forEach((q, i) => { const e = Math.abs(q - p); if (e < d) { d = e; best = i; } });
+  return NAMES[best % 12] + (Math.floor(best / 12) + 1);
+}
+const hex = (v, n) => v.toString(16).toUpperCase().padStart(n, '0');
+const str = (b, o, n) => { let s = ''; for (let i = 0; i < n && b[o + i]; i++) s += (b[o+i] >= 32 && b[o+i] < 127) ? String.fromCharCode(b[o+i]) : ' '; return s.trimEnd(); };
+
+function parseMod(b) {
+  let ns = 31, ch = 4;
+  const tag = String.fromCharCode(...b.slice(1080, 1084));
+  const known = { 'M.K.':4, 'M!K!':4, 'M&K!':4, 'N.T.':4, 'FLT4':4, '4CHN':4, '6CHN':6, '8CHN':8, 'FLT8':8, 'OCTA':8, 'CD81':8 };
+  if (known[tag]) ch = known[tag];
+  else if (/^\d\dCH$/.test(tag)) ch = parseInt(tag, 10);
+  else if (/^\dCHN$/.test(tag)) ch = parseInt(tag, 10);
+  else ns = 15;
+  const samples = [];
+  for (let i = 0; i < ns; i++) {
+    const o = 20 + i * 30;
+    samples.push({ name: str(b, o, 22), len: ((b[o+22] << 8) | b[o+23]) * 2, vol: b[o+25],
+      loop: ((b[o+28] << 8) | b[o+29]) > 1 });
+  }
+  const so = 20 + ns * 30;
+  const songLen = Math.max(1, Math.min(128, b[so]));
+  const allOrders = Array.from(b.slice(so + 2, so + 130));
+  const order = allOrders.slice(0, songLen);
+  const npat = Math.max(...allOrders) + 1;
+  const base = so + 130 + (ns === 31 ? 4 : 0);
+  const pattern = (p, row, c) => {
+    const o = base + p * 64 * ch * 4 + (row * ch + c) * 4;
+    if (o + 4 > b.length) return { s: 0, p: 0, e: 0, x: 0 };
+    return { s: (b[o] & 0xF0) | (b[o+2] >> 4), p: ((b[o] & 15) << 8) | b[o+1], e: b[o+2] & 15, x: b[o+3] };
+  };
+  return { title: str(b, 0, 20) || '(ohne Titel)', channels: ch, samples, order, npat, pattern };
+}
+
+function cellText(c) {
+  const fx = (c.e || c.x) ? hex(c.e, 1) + hex(c.x, 2) : '...';
+  return `${noteName(c.p)} ${c.s ? hex(c.s, 2) : '..'} ${fx}`;
+}
+
+// ------------------------------------------------------------------ audio
+let ctx = null, node = null, wasmModule = null, song = null, modBytes = null;
+let playing = false, last = null, lastPatKey = '';
+
+async function loadWasm() {
+  const res = await fetch('modplayer.wasm');
+  if (!res.ok) throw new Error('modplayer.wasm nicht gefunden – zuerst ./build.sh ausführen');
+  const bytes = await res.arrayBuffer();
+  if (!WebAssembly.validate(bytes)) throw new Error('modplayer.wasm ist ungültig');
+  return bytes;
+}
+
+function waitFor(type) {
+  return new Promise((resolve, reject) => {
+    const h = (e) => {
+      if (e.data.type === type) { node.port.removeEventListener('message', h); resolve(e.data); }
+      else if (e.data.type === 'error') { node.port.removeEventListener('message', h); reject(new Error(e.data.message)); }
+    };
+    node.port.addEventListener('message', h);
+  });
+}
+
+async function ensureAudio() {
+  if (ctx) return;
+  if (!wasmModule) wasmModule = await loadWasm();
+  ctx = new AudioContext({ latencyHint: 'interactive' });
+  await ctx.audioWorklet.addModule('worklet.js');
+  node = new AudioWorkletNode(ctx, 'mod-processor', { numberOfInputs: 0, outputChannelCount: [2] });
+  node.connect(ctx.destination);
+  node.port.onmessage = onWorkletMessage;
+  node.port.start();
+  const ready = waitFor('ready');
+  node.port.postMessage({ type: 'init', wasmBytes: wasmModule.slice(0) });
+  await ready;
+  node.port.postMessage({ type: 'loop', on: $('loop').checked });
+}
+
+async function sendSong() {
+  const loaded = waitFor('loaded');
+  node.port.postMessage({ type: 'load', bytes: modBytes.slice().buffer }, );
+  const r = await loaded;
+  if (!r.ok) throw new Error('MOD konnte nicht gelesen werden (Code ' + r.error + ')');
+  node.port.postMessage({ type: 'separation', value: $('sep').value / 100 });
+  node.pendingSong = false;
+}
+
+function setSong(bytes, name) {
+  modBytes = new Uint8Array(bytes);
+  song = parseMod(modBytes);
+  song.file = name;
+  last = null; lastPatKey = '';
+  renderSamples(); renderOrders(); renderPattern(0, 0);
+  $('msg').textContent = `${song.title} · ${song.channels} Kanäle · ${song.order.length} Positionen`;
+  if (node) node.pendingSong = true;
+}
+
+async function play() {
+  try {
+    await ensureAudio();
+    if (node.pendingSong !== false) await sendSong();
+    await ctx.resume();
+    playing = !playing;
+    node.port.postMessage({ type: 'play', on: playing });
+    updateButtons();
+  } catch (e) { $('msg').textContent = 'Fehler beim Abspielen: ' + e.message; playing = false; updateButtons(); }
+}
+
+function stop() {
+  if (!node) return;
+  playing = false;
+  node.port.postMessage({ type: 'play', on: false });
+  node.port.postMessage({ type: 'seek', order: 0 });
+  last = null; timeline.length = 0; dir.order = -1; dir.z = 0; renderPattern(song.order[0], 0); renderOrders(0);
+  updateButtons();
+}
+
+function updateButtons() {
+  $('play').textContent = playing ? '❚❚ Pause' : '▶ Play';
+}
+
+function onWorkletMessage(e) {
+  const m = e.data;
+  if (m.type === 'scope') {
+    last = m;
+    let e = 0; const o = m.channels * m.len;
+    for (let i = 0; i < m.len; i++) { const l = m.data[o + i], r = m.data[o + m.len + i]; e += l * l + r * r; }
+    m.rms = Math.sqrt(e / (2 * m.len));
+    // the audio of this block is heard after the output latency: show it then
+    const lat = ctx ? ((ctx.outputLatency || 0) + (ctx.baseLatency || 0)) * 1000 : 0;
+    m.t = performance.now() + lat;
+    m.seq = ++msgSeq;
+    timeline.push(m);
+    if (timeline.length > 64) timeline.shift();
+    dir.peak = Math.max(m.rms, dir.peak * 0.9995, 0.02);
+    dir.inten += (Math.min(1, m.rms / dir.peak) - dir.inten) * 0.04;
+    if (m.ended) { playing = false; updateButtons(); $('msg').textContent = 'Ende des Songs.'; }
+  } else if (m.type === 'error') {
+    $('msg').textContent = 'Worklet-Fehler: ' + m.message;
+  }
+}
+
+// ------------------------------------------------------------------ views
+function renderSamples() {
+  $('samples').textContent = song.samples.map((s, i) => s.len || s.name
+    ? `${hex(i + 1, 2)} ${s.name.padEnd(22)} ${String(s.len).padStart(6)} v${String(s.vol).padStart(2)}${s.loop ? ' ∞' : ''}`
+    : null).filter(Boolean).join('\n');
+}
+
+function renderOrders(cur = -1) {
+  const box = $('orders');
+  if (box.childElementCount !== song.order.length) {
+    box.innerHTML = '';
+    song.order.forEach((p, i) => {
+      const b = document.createElement('button');
+      b.textContent = hex(p, 2);
+      b.title = 'Position ' + i;
+      b.onclick = () => { if (node) node.port.postMessage({ type: 'seek', order: i }); };
+      box.appendChild(b);
+    });
+  }
+  [...box.children].forEach((b, i) => b.classList.toggle('on', i === cur));
+}
+
+function renderPattern(pat, row) {
+  const key = pat + ':' + row;
+  if (key === lastPatKey) return;
+  lastPatKey = key;
+  const n = song.channels, span = 10;
+  const head = '   │ ' + Array.from({ length: n }, (_, c) => `Kanal ${c + 1}`.padEnd(10)).join(' │ ');
+  const lines = [head];
+  for (let r = row - span; r <= row + span; r++) {
+    if (r < 0 || r > 63) { lines.push(''); continue; }
+    const cells = Array.from({ length: n }, (_, c) => cellText(song.pattern(pat, r, c))).join(' │ ');
+    const txt = `${String(r).padStart(2, '0')} │ ${cells}`;
+    const cls = r === row ? 'cur' : (r % 4 === 0 ? 'bar' : '');
+    lines.push(cls ? `<span class="${cls}">${txt}</span>` : txt);
+  }
+  $('pattern').innerHTML = lines.join('\n');
+}
+
+function renderStatus(m) {
+  const t = ctx ? ctx.currentTime : 0;
+  $('status').innerHTML = [
+    ['Song', song.title], ['Position', m ? `${m.order} / ${song.order.length - 1}` : '–'],
+    ['Pattern', m ? hex(m.pattern, 2) : '–'], ['Zeile', m ? String(m.row).padStart(2, '0') : '–'],
+    ['Speed', m ? m.speed : '–'], ['BPM', m ? m.tempo : '–'],
+    ['Kanäle', song.channels], ['Rate', ctx ? ctx.sampleRate + ' Hz' : '–'],
+  ].map(([k, v]) => `<span>${k}: <b>${v}</b></span>`).join('');
+}
+
+// ------------------------------------------------------------------ oscilloscope
+const canvas = $('scope');
+const g = canvas.getContext('2d');
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = canvas.clientWidth;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(w * 10 / 16 * dpr);
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#020403'; g.fillRect(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize', resize);
+
+function grid(x, y, w, h) {
+  g.strokeStyle = 'rgba(57,255,136,0.08)'; g.lineWidth = 1;
+  g.beginPath();
+  for (let i = 1; i < 8; i++) { const gx = x + w * i / 8; g.moveTo(gx, y); g.lineTo(gx, y + h); }
+  for (let i = 1; i < 4; i++) { const gy = y + h * i / 4; g.moveTo(x, gy); g.lineTo(x + w, gy); }
+  g.stroke();
+  g.strokeStyle = 'rgba(57,255,136,0.25)';
+  g.strokeRect(x + .5, y + .5, w - 1, h - 1);
+}
+
+// Find a rising zero crossing so periodic waves stand still.
+function trigger(d, off, len, win) {
+  for (let i = off + 1; i < off + len - win; i++) if (d[i - 1] <= 0 && d[i] > 0) return i;
+  return off;
+}
+
+function trace(d, start, win, x, y, w, h, color, gain) {
+  g.strokeStyle = color; g.lineWidth = 1.4;
+  g.shadowColor = color; g.shadowBlur = 6;
+  g.beginPath();
+  for (let i = 0; i < win; i++) {
+    const px = x + i / (win - 1) * w;
+    const py = y + h / 2 - Math.max(-1, Math.min(1, d[start + i] * gain)) * h * 0.45;
+    i ? g.lineTo(px, py) : g.moveTo(px, py);
+  }
+  g.stroke();
+  g.shadowBlur = 0;
+}
+
+function label(text, x, y) {
+  g.fillStyle = 'rgba(57,255,136,0.6)';
+  g.font = '11px ui-monospace, Menlo, monospace';
+  g.fillText(text, x + 6, y + 14);
+}
+
+function draw() {
+  requestAnimationFrame(draw);
+  if (viewMode === 'mandel') { drawMandel(); return; }
+  if (viewMode === 'spectrum') { drawSpectrum(); return; }
+  if (viewMode === 'cube') { drawCube(); return; }
+  const W = canvas.clientWidth, H = W * 10 / 16;
+  // phosphor persistence
+  g.fillStyle = 'rgba(2,4,3,0.35)';
+  g.fillRect(0, 0, W, H);
+  const pad = 6;
+  const topH = H * 0.42;
+  const xyW = topH;
+  const mW = W - xyW - pad * 3;
+  grid(pad, pad, mW, topH - pad);
+  grid(pad * 2 + mW, pad, xyW, topH - pad);
+  const n = song ? song.channels : 4;
+  const cols = n <= 4 ? 2 : 4, rows = Math.ceil(n / cols);
+  const cw = (W - pad * (cols + 1)) / cols, chh = (H - topH - pad * (rows + 1)) / rows;
+  for (let c = 0; c < n; c++) {
+    const x = pad + (c % cols) * (cw + pad), y = topH + pad + Math.floor(c / cols) * (chh + pad);
+    grid(x, y, cw, chh);
+  }
+  if (!last || !playing) {
+    label('MASTER L/R', pad, pad); label('XY', pad * 2 + mW, pad);
+    for (let c = 0; c < n; c++) label('KANAL ' + (c + 1), pad + (c % cols) * (cw + pad), topH + pad + Math.floor(c / cols) * (chh + pad));
+    return;
+  }
+  const m = last, L = m.len, d = m.data, nch = m.channels;
+  const ml = nch * L, mr = (nch + 1) * L;
+  // master L (green) + R (amber)
+  const win = 768;
+  const st = trigger(d, ml, L, win) - ml;
+  trace(d, ml + st, win, pad, pad, mW, topH - pad, '#39ff88', 1.6);
+  trace(d, mr + st, win, pad, pad, mW, topH - pad, 'rgba(255,180,58,0.85)', 1.6);
+  label('MASTER  L ▬ grün   R ▬ bernstein', pad, pad);
+  // XY (Lissajous): x = L, y = R
+  const cx = pad * 2 + mW + xyW / 2, cy = pad + (topH - pad) / 2, rr = xyW * 0.45;
+  g.strokeStyle = '#39ff88'; g.lineWidth = 1; g.shadowColor = '#39ff88'; g.shadowBlur = 5;
+  g.beginPath();
+  for (let i = 0; i < L; i++) {
+    const px = cx + Math.max(-1, Math.min(1, d[ml + i] * 1.6)) * rr;
+    const py = cy - Math.max(-1, Math.min(1, d[mr + i] * 1.6)) * rr;
+    i ? g.lineTo(px, py) : g.moveTo(px, py);
+  }
+  g.stroke(); g.shadowBlur = 0;
+  label('XY', pad * 2 + mW, pad);
+  // channels
+  const cwin = 512;
+  for (let c = 0; c < nch; c++) {
+    const x = pad + (c % cols) * (cw + pad), y = topH + pad + Math.floor(c / cols) * (chh + pad);
+    const s = trigger(d, c * L, L, cwin);
+    trace(d, s, cwin, x, y, cw, chh, '#39ff88', 1.2);
+    const cell = song.pattern(m.pattern, m.row, c);
+    label(`KANAL ${c + 1}  ${cellText(cell)}`, x, y);
+  }
+  renderPattern(m.pattern, m.row);
+  renderOrders(m.order);
+  renderStatus(m);
+}
+
+// ------------------------------------------------------------------ Mandelbrot view, driven by the music
+// Timing comes from the replayer itself (order, row, speed, BPM), so zoom and pan land exactly on
+// the beat: one beat = 4 rows, one bar = 16 rows. Every order position is one "journey" into a
+// place of the set; each beat gives a zoom push, notes shift the palette, bars flash and sway.
+let viewMode = 'oscilloscope', mandel = null, mandelReady = null, msgSeq = 0;
+const timeline = [];
+const dir = { order: -1, place: -1, z: 0, prevE: null, shift: 0, shiftShown: 0, flash: 0, inten: 0.5, peak: 0.05,
+  rowKey: '', lastT: 0, view: null, dirty: true };
+const easeOut = (p) => 1 - Math.pow(1 - p, 4);       // fast start, soft landing: a "push" per beat
+
+function nowRow(now) {
+  while (timeline.length > 1 && timeline[1].t <= now) timeline.shift();
+  const m = timeline[0];
+  if (!m || m.t > now + 200) return null;
+  const rowDur = 2.5 * m.speed / m.tempo * 1000;       // ms per row
+  const rowF = Math.min(m.row + Math.max(0, now - m.t) / rowDur, m.row + 1.999, 63.999);
+  return { m, rowF };
+}
+
+function direct(now) {
+  const dt = Math.min(0.1, (now - (dir.lastT || now)) / 1000); dir.lastT = now;
+  const P = Mandel.PLACES;
+  const T = playing ? nowRow(now) : null;
+  if (!T) {                                               // paused / stopped: keep the picture
+    if (!dir.view) { dir.place = 0; dir.view = { cx: P[0].cx, cy: P[0].cy, size: 3, rot: 0, shift: 0, flash: 0 }; dir.dirty = true; }
+    dir.flash *= Math.exp(-dt * 8);
+    if (dir.view.flash > 0.01) { dir.view.flash = dir.flash; dir.dirty = true; }
+    return dir.view;
+  }
+  const { m, rowF } = T;
+  if (m.order !== dir.order) {                            // new pattern: new journey, on the downbeat
+    dir.order = m.order;
+    dir.place = (dir.place + 1) % P.length;
+    dir.z = 0; dir.prevE = null;
+    dir.flash = Math.max(dir.flash, 0.45);
+  }
+  const place = P[dir.place];
+  const beat = rowF / 4;
+  const e = Math.floor(beat) + easeOut(beat % 1);
+  if (dir.prevE === null || e < dir.prevE) dir.prevE = e;
+  const rate = 0.3 + 0.8 * dir.inten;                     // zoom doublings per beat: louder = faster
+  dir.z = Math.min(dir.z + (e - dir.prevE) * rate, Math.log2(3 / place.min) - 0.3);
+  dir.prevE = e;
+  const size = 3 * Math.pow(2, -dir.z);
+
+  const r = Math.floor(rowF), key = m.order + ':' + r;
+  if (key !== dir.rowKey) {                               // a new row: look at the notes in it
+    dir.rowKey = key;
+    let hits = 0;
+    for (let c = 0; c < song.channels; c++) if (song.pattern(m.pattern, r, c).p) hits++;
+    dir.shift += hits * 26 * (0.5 + dir.inten);
+    if (r % 16 === 0) dir.flash = Math.max(dir.flash, 0.12 + 0.3 * dir.inten);
+    else if (r % 4 === 0 && hits) dir.flash = Math.max(dir.flash, 0.1 * dir.inten);
+  }
+  dir.flash *= Math.exp(-dt * 7);
+  dir.shiftShown += (dir.shift - dir.shiftShown) * Math.min(1, dt * 10);
+
+  // pan: the centre steps around a small circle, one quarter turn per beat
+  const ang = e * Math.PI / 2, rad = size * 0.05 * (0.4 + dir.inten);
+  // rotation: sway left / right, one swing per bar
+  const bar = rowF / 16;
+  const rot = 0.14 * (0.4 + 0.6 * dir.inten) * Math.sin(Math.PI * (Math.floor(bar) + easeOut(bar % 1)));
+  dir.view = { cx: place.cx + rad * Math.cos(ang), cy: place.cy + rad * Math.sin(ang), size, rot,
+    shift: dir.shiftShown, flash: dir.flash, place: place.name, m, rowF };
+  dir.dirty = true;
+  return dir.view;
+}
+
+const mcanvas = $('mandel');
+function drawMandel() {
+  if (!mandel) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = mcanvas.clientWidth, cssH = mcanvas.clientHeight;
+  if (!cssW || !cssH) return;
+  const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
+  if (mcanvas.width !== W || mcanvas.height !== H) { mcanvas.width = W; mcanvas.height = H; dir.dirty = true; }
+  const v = direct(performance.now());
+  if (dir.dirty || mandel.engine === 'wasm') { mandel.draw(v, cssW, cssH, dpr); dir.dirty = false; }
+  const zoom = 3 / v.size;
+  $('mhud').innerHTML = `${v.place || Mandel.PLACES[dir.place].name} · Zoom ${zoom < 1e4 ? zoom.toFixed(0) : zoom.toExponential(1).replace('e+', '·10^')}×` +
+    `<br>${mandel.info || '…'}` + (v.m ? `<br>Pos ${v.m.order} · Zeile ${String(Math.floor(v.rowF)).padStart(2, '0')} · Pegel ${(dir.inten * 100).toFixed(0)} %` : '');
+  if (last && playing) { renderPattern(last.pattern, last.row); renderOrders(last.order); renderStatus(last); }
+}
+
+const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube'];
+const VIEW_NAME = { oscilloscope: 'Oszilloskop', mandel: 'Mandelbrot', spectrum: 'Spektrum', cube: 'Würfel' };
+const VIEW_TITLE = { oscilloscope: 'Oszilloskop · Master L/R · XY · Kanäle', mandel: 'Mandelbrot-Zoom im Takt der Musik',
+  spectrum: 'Spektrum · FFT (Rust, 4096 Punkte, Hann-Fenster) · Spektrogramm',
+  cube: 'Würfel · Oszilloskop · XY · Spektrum 2D/3D · Noten · Mandelbrot' };
+async function setView(mode) {
+  viewMode = mode;
+  const md = mode === 'mandel', sm = mode === 'spectrum';
+  $('view').textContent = 'Ansicht: ' + VIEW_NAME[mode];
+  $('viewTitle').textContent = VIEW_TITLE[mode];
+  canvas.style.display = mode === 'oscilloscope' ? 'block' : 'none';
+  mcanvas.style.display = md ? 'block' : 'none';
+  $('spec').style.display = sm ? 'block' : 'none';
+  $('cubeScene').style.display = mode === 'cube' ? 'block' : 'none';
+  if (mode === 'cube') initCube();
+  $('mctl').style.display = md || sm || mode === 'cube' ? 'flex' : 'none';
+  for (const b of document.querySelectorAll('#mctl .monly')) b.style.display = md ? '' : 'none';
+  for (const b of document.querySelectorAll('#mctl .sonly')) b.style.display = sm ? '' : 'none';
+  $('mhud').style.display = md ? 'block' : 'none';
+  if (md && !mandel) {
+    try {
+      const m = Mandel(mcanvas);
+      const ok = await m.init();
+      if (!ok.gpu && !ok.wasm) throw new Error('weder WebGL2 noch WebAssembly-SIMD verfügbar');
+      mandel = m;
+      $('mEng').textContent = 'Engine: ' + (m.engine === 'gpu' ? 'GPU' : 'Rust/WASM');
+    } catch (e) { $('msg').textContent = 'Mandelbrot nicht möglich: ' + e.message; }
+  }
+  dir.dirty = true; spec.reset = true;
+  if (mode === 'oscilloscope') {
+    if ($('viewBoxOuter').classList.contains('fs')) $('mFs').click();
+    resize();
+  }
+}
+$('view').onclick = () => setView(VIEWS[(VIEWS.indexOf(viewMode) + 1) % VIEWS.length]);
+$('mEng').onclick = () => {
+  if (!mandel) return;
+  const l = mandel.engines(); mandel.engine = l[(l.indexOf(mandel.engine) + 1) % l.length];
+  $('mEng').textContent = 'Engine: ' + (mandel.engine === 'gpu' ? 'GPU' : 'Rust/WASM');
+  dir.dirty = true;
+};
+$('mPal').onclick = () => { if (mandel) { mandel.nextPalette(); dir.dirty = true; } };
+$('mFs').onclick = async () => {
+  const box = $('viewBoxOuter');
+  const on = !box.classList.contains('fs');
+  box.classList.toggle('fs', on);
+  $('mFs').textContent = on ? 'Vollbild beenden' : 'Vollbild';
+  try { if (on && box.requestFullscreen) await box.requestFullscreen(); else if (!on && document.fullscreenElement) await document.exitFullscreen(); }
+  catch { /* the frame may not allow real fullscreen: the fixed overlay still fills the window */ }
+  dir.dirty = true;
+};
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && $('viewBoxOuter').classList.contains('fs')) {
+    $('viewBoxOuter').classList.remove('fs'); $('mFs').textContent = 'Vollbild';
+  }
+});
+mcanvas.addEventListener('dblclick', () => $('mFs').click());
+// small debug hook for automated tests
+window.__mt = { dir, state: () => ({ viewMode, mode3d: spec.mode3d, hist: spec.hist.length, nb: spec.nb, specSeq: spec.lastSeq, playing, engine: mandel && mandel.engine, info: mandel && mandel.info, view: dir.view && { size: dir.view.size, rot: dir.view.rot, place: dir.view.place, flash: dir.view.flash }, inten: dir.inten }) , setEngine: (e) => { mandel.engine = e; dir.dirty = true; } };
+
+
+// ------------------------------------------------------------------ spectrum (Rust FFT)
+// Each worklet message carries the power spectrum of the newest 4096 mix samples, computed by
+// the Rust FFT in WASM. Shown as log-frequency bars with peak hold, plus a scrolling spectrogram.
+const scv = $('spec'), sg = scv.getContext('2d');
+const spec = { disp: null, peak: null, hold: null, nb: 0, lastSeq: -1, lastT: 0, wf: null, reset: true, mode3d: false, hist: [] };
+const HIST_AGE = 4000;   // ms: older spectra fade out completely and are dropped
+const DB_MIN = -96, DB_MAX = 0, F_MIN = 30;
+const NOTE = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+function currentMsg(now) {
+  while (timeline.length > 1 && timeline[1].t <= now) timeline.shift();
+  const m = timeline[0];
+  return m && m.t <= now + 200 && m.spec ? m : null;
+}
+function bandValue(p, f0, f1, binHz) {
+  // max power of the bins inside [f0, f1]; narrow bands interpolate between bins
+  const k0 = f0 / binHz, k1 = f1 / binHz;
+  if (k1 - k0 < 1) {
+    const k = (k0 + k1) / 2, i = Math.floor(k), t = k - i;
+    return p[i] * (1 - t) + p[Math.min(i + 1, p.length - 1)] * t;
+  }
+  let v = 0;
+  for (let k = Math.floor(k0); k <= Math.min(Math.ceil(k1), p.length - 1); k++) if (p[k] > v) v = p[k];
+  return v;
+}
+const toDb = (v) => 10 * Math.log10(v + 1e-14);
+function wfColor(t) {   // 0..1 -> black, deep green, phosphor green, amber, white
+  const stops = [[0, 0, 0, 0], [0.35, 0, 70, 30], [0.6, 57, 255, 136], [0.82, 255, 180, 58], [1, 255, 255, 255]];
+  let i = 0; while (i < stops.length - 2 && stops[i + 1][0] < t) i++;
+  const [a, b] = [stops[i], stops[i + 1]], f = Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0])));
+  return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, a[3] + (b[3] - a[3]) * f];
+}
+
+function drawSpectrum() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = scv.clientWidth, H = scv.clientHeight;
+  if (!W || !H) return;
+  if (scv.width !== Math.round(W * dpr) || scv.height !== Math.round(H * dpr)) {
+    scv.width = Math.round(W * dpr); scv.height = Math.round(H * dpr); spec.reset = true;
+  }
+  const now = performance.now();
+  const m = playing ? currentMsg(now) : null;
+  if (!m && !spec.reset) return;                         // paused: keep the last picture
+  const dt = Math.min(0.1, (now - (spec.lastT || now)) / 1000); spec.lastT = now;
+
+  const left = 34, right = 8, top = 8, gap = 18;
+  const plotW = W - left - right, barsH = Math.round((H - top) * 0.58) - gap, wfTop = top + barsH + gap, wfH = H - wfTop - 6;
+  const sr = m ? m.sampleRate : (ctx ? ctx.sampleRate : 44100), fMax = Math.min(20000, sr / 2);
+  const xOf = (f) => left + Math.log(f / F_MIN) / Math.log(fMax / F_MIN) * plotW;
+  const nb = Math.max(16, Math.min(128, Math.floor(plotW / 7)));
+  if (spec.reset || spec.nb !== nb) {
+    spec.nb = nb; spec.disp = new Float32Array(nb); spec.peak = new Float32Array(nb); spec.hold = new Float32Array(nb);
+    spec.wf = document.createElement('canvas'); spec.wf.width = Math.max(1, Math.round(plotW * dpr)); spec.wf.height = Math.max(1, Math.round(wfH * dpr));
+    const wg = spec.wf.getContext('2d'); wg.fillStyle = '#000'; wg.fillRect(0, 0, spec.wf.width, spec.wf.height);
+    spec.reset = false;
+  }
+
+  let peakText = '';
+  if (m) {
+    const p = m.spec, binHz = sr / m.fftSize;
+    for (let b = 0; b < nb; b++) {
+      const f0 = F_MIN * Math.pow(fMax / F_MIN, b / nb), f1 = F_MIN * Math.pow(fMax / F_MIN, (b + 1) / nb);
+      const v = Math.max(0, Math.min(1, (toDb(bandValue(p, f0, f1, binHz)) - DB_MIN) / (DB_MAX - DB_MIN)));
+      spec.disp[b] = Math.max(v, spec.disp[b] - dt * 0.9);          // fast attack, ~85 dB/s release
+      if (spec.disp[b] >= spec.peak[b]) { spec.peak[b] = spec.disp[b]; spec.hold[b] = 0.6; }
+      else if ((spec.hold[b] -= dt) < 0) spec.peak[b] = Math.max(0, spec.peak[b] - dt * 0.3);
+    }
+    // dominant frequency (40 Hz .. 5 kHz), refined by parabolic interpolation of the log power
+    let kb = 0;
+    for (let k = Math.ceil(40 / binHz); k < Math.min(p.length - 1, 5000 / binHz); k++) if (p[k] > p[kb]) kb = k;
+    if (kb > 0 && p[kb] > 1e-7) {
+      const a = toDb(p[kb - 1]), b = toDb(p[kb]), c = toDb(p[kb + 1]);
+      const f = (kb + 0.5 * (a - c) / (a - 2 * b + c || 1)) * binHz;
+      const midi = Math.round(69 + 12 * Math.log2(f / 440));
+      peakText = `Spitze ${f.toFixed(1)} Hz ≈ ${NOTE[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1} · ${b.toFixed(1)} dB`;
+    }
+    // spectrogram: scroll left, draw the new column (high frequencies at the top)
+    if (m.seq !== spec.lastSeq) {
+      spec.lastSeq = m.seq;
+      spec.hist.push({ t: m.t, v: Float32Array.from(spec.disp) });
+      const wg = spec.wf.getContext('2d'), ww = spec.wf.width, wh = spec.wf.height, col = Math.max(1, Math.round(2 * dpr));
+      wg.drawImage(spec.wf, -col, 0);
+      const img = wg.createImageData(col, wh);
+      for (let y = 0; y < wh; y++) {
+        const f = F_MIN * Math.pow(fMax / F_MIN, 1 - y / wh);
+        const f2 = F_MIN * Math.pow(fMax / F_MIN, 1 - (y + 1) / wh);
+        const t = Math.max(0, Math.min(1, (toDb(bandValue(p, f2, f, binHz)) - DB_MIN) / (DB_MAX - DB_MIN)));
+        const [r, g2, bl] = wfColor(t);
+        for (let x = 0; x < col; x++) { const o = (y * col + x) * 4; img.data[o] = r; img.data[o + 1] = g2; img.data[o + 2] = bl; img.data[o + 3] = 255; }
+      }
+      wg.putImageData(img, ww - col, 0);
+    }
+  }
+
+  while (spec.hist.length && (now - spec.hist[0].t > HIST_AGE || spec.hist[0].v.length !== nb)) spec.hist.shift();
+  if (spec.mode3d) {
+    draw3D(now, W, H, dpr, nb, fMax, peakText, sr);
+    if (m) { renderPattern(m.pattern, m.row); renderOrders(m.order); renderStatus(m); }
+    return;
+  }
+  sg.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sg.fillStyle = '#020403'; sg.fillRect(0, 0, W, H);
+  sg.font = '10px ui-monospace, Menlo, monospace';
+  // dB grid
+  for (let db = DB_MIN; db <= DB_MAX; db += 12) {
+    const y = top + barsH - (db - DB_MIN) / (DB_MAX - DB_MIN) * barsH;
+    sg.strokeStyle = 'rgba(57,255,136,0.08)'; sg.beginPath(); sg.moveTo(left, y + .5); sg.lineTo(left + plotW, y + .5); sg.stroke();
+    sg.fillStyle = 'rgba(57,255,136,0.5)'; sg.fillText(String(db), 4, y + 3);
+  }
+  // frequency grid + labels
+  sg.textAlign = 'center';
+  for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
+    if (f > fMax) continue;
+    const x = Math.round(xOf(f)) + .5;
+    sg.strokeStyle = 'rgba(57,255,136,0.08)'; sg.beginPath(); sg.moveTo(x, top); sg.lineTo(x, top + barsH); sg.moveTo(x, wfTop); sg.lineTo(x, wfTop + wfH); sg.stroke();
+    sg.fillStyle = 'rgba(57,255,136,0.55)'; sg.fillText(f >= 1000 ? f / 1000 + 'k' : String(f), x, top + barsH + 12);
+  }
+  sg.textAlign = 'left';
+  // bars
+  const grad = sg.createLinearGradient(0, top + barsH, 0, top);
+  grad.addColorStop(0, '#1b7a45'); grad.addColorStop(0.55, '#39ff88'); grad.addColorStop(0.85, '#ffb43a'); grad.addColorStop(1, '#ff5a3a');
+  const bw = plotW / nb;
+  sg.fillStyle = grad; sg.shadowColor = '#39ff88'; sg.shadowBlur = 8;
+  for (let b = 0; b < nb; b++) {
+    const h = spec.disp[b] * barsH;
+    sg.fillRect(left + b * bw + 1, top + barsH - h, Math.max(1, bw - 2), h);
+  }
+  sg.shadowBlur = 0; sg.fillStyle = '#d8f5e4';
+  for (let b = 0; b < nb; b++) {
+    if (spec.peak[b] <= 0.01) continue;
+    sg.fillRect(left + b * bw + 1, top + barsH - spec.peak[b] * barsH - 1, Math.max(1, bw - 2), 2);
+  }
+  // spectrogram
+  sg.imageSmoothingEnabled = false;
+  sg.drawImage(spec.wf, left, wfTop, plotW, wfH);
+  sg.strokeStyle = 'rgba(57,255,136,0.25)';
+  sg.strokeRect(left + .5, top + .5, plotW - 1, barsH - 1);
+  sg.strokeRect(left + .5, wfTop + .5, plotW - 1, wfH - 1);
+  sg.fillStyle = 'rgba(57,255,136,0.75)';
+  sg.fillText(peakText || 'FFT 4096 · Hann · ' + (sr / 4096).toFixed(1) + ' Hz/Bin', left + 6, top + 14);
+  if (m) {
+    sg.textAlign = 'right';
+    sg.fillText(`Pos ${m.order} · Zeile ${String(m.row).padStart(2, '0')}`, left + plotW - 6, top + 14);
+    sg.textAlign = 'left';
+    renderPattern(m.pattern, m.row); renderOrders(m.order); renderStatus(m);
+  }
+}
+
+
+// 3D: the spectrum history recedes into the depth. Rows are drawn back to front (painter's
+// algorithm); each row is a filled ridge that hides what lies behind it, older rows get smaller,
+// move up towards the vanishing point and fade out. After HIST_AGE they are gone.
+function draw3D(now, W, H, dpr, nb, fMax, peakText, sr) {
+  sg.setTransform(dpr, 0, 0, dpr, 0, 0);
+  sg.fillStyle = '#020403'; sg.fillRect(0, 0, W, H);
+  const left = 16, right = 16, bottom = 22;
+  const plotW = W - left - right, cx = left + plotW / 2;
+  const yFront = H - bottom, vpY = H * 0.12, amp = H * 0.42, K = 2.4;
+  const proj = (xn, v, z) => {                            // xn 0..1, v 0..1, z 0 (now) .. 1 (oldest)
+    const s = 1 / (1 + z * K);
+    return [cx + (xn - 0.5) * plotW * s, vpY + (yFront - vpY) * s - v * amp * s];
+  };
+  // floor grid lines towards the vanishing point
+  sg.strokeStyle = 'rgba(57,255,136,0.07)'; sg.lineWidth = 1;
+  sg.beginPath();
+  for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
+    if (f > fMax) continue;
+    const xn = Math.log(f / F_MIN) / Math.log(fMax / F_MIN);
+    const [x0, y0] = proj(xn, 0, 0), [x1, y1] = proj(xn, 0, 1);
+    sg.moveTo(x0, y0); sg.lineTo(x1, y1);
+  }
+  for (let z = 0; z <= 1.001; z += 0.25) { const [x0, y0] = proj(0, 0, z), [x1] = proj(1, 0, z); sg.moveTo(x0, y0); sg.lineTo(x1, y0); }
+  sg.stroke();
+
+  const rows = spec.hist;
+  for (let i = 0; i < rows.length; i++) {                 // oldest first
+    const r = rows[i];
+    const z = Math.max(0, Math.min(1, (now - r.t) / HIST_AGE));
+    const fade = Math.pow(1 - z, 1.6);
+    if (fade < 0.02) continue;
+    let loud = 0;
+    sg.beginPath();
+    let [x, y] = proj(0, 0, z); sg.moveTo(x, y);
+    for (let b = 0; b < nb; b++) {
+      const v = r.v[b]; if (v > loud) loud = v;
+      [x, y] = proj((b + 0.5) / nb, v, z); sg.lineTo(x, y);
+    }
+    [x, y] = proj(1, 0, z); sg.lineTo(x, y);
+    sg.closePath();
+    sg.fillStyle = `rgba(2,6,4,${(0.55 + 0.4 * fade).toFixed(3)})`;   // hides the rows behind
+    sg.fill();
+    // colour: green, towards amber for loud rows; fades with age
+    const mix = Math.max(0, Math.min(1, (loud - 0.55) / 0.35));
+    const cr = Math.round(57 + (255 - 57) * mix), cg = Math.round(255 - (255 - 180) * mix), cb = Math.round(136 - (136 - 58) * mix);
+    sg.strokeStyle = `rgba(${cr},${cg},${cb},${(0.9 * fade).toFixed(3)})`;
+    sg.lineWidth = i === rows.length - 1 ? 2 : 1.1;
+    if (i === rows.length - 1) { sg.shadowColor = '#39ff88'; sg.shadowBlur = 10; }
+    sg.stroke();
+    sg.shadowBlur = 0;
+  }
+  // frequency labels along the front edge
+  sg.font = '10px ui-monospace, Menlo, monospace'; sg.textAlign = 'center'; sg.fillStyle = 'rgba(57,255,136,0.55)';
+  for (const f of [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]) {
+    if (f > fMax) continue;
+    const [x] = proj(Math.log(f / F_MIN) / Math.log(fMax / F_MIN), 0, 0);
+    sg.fillText(f >= 1000 ? f / 1000 + 'k' : String(f), x, H - 7);
+  }
+  sg.textAlign = 'left'; sg.fillStyle = 'rgba(57,255,136,0.75)';
+  sg.fillText(peakText || 'FFT 4096 · Hann · ' + (sr / 4096).toFixed(1) + ' Hz/Bin', left + 4, 16);
+  sg.textAlign = 'right';
+  sg.fillText(`3D · ${(HIST_AGE / 1000).toFixed(0)} s Verlauf · ${rows.length} Spektren`, W - right - 4, 16);
+  sg.textAlign = 'left';
+}
+$('s3d').onclick = () => {
+  spec.mode3d = !spec.mode3d;
+  $('s3d').textContent = 'Darstellung: ' + (spec.mode3d ? '3D' : '2D');
+  spec.reset = true;
+};
+
+// ------------------------------------------------------------------ cube: six live views on a rotating cube
+// A CSS-3D cube (perspective-correct, sharp text). Every face is its own canvas and is redrawn each
+// frame from the same data as the big views: worklet scope data, the Rust FFT spectrum, the
+// pattern of the playing song and the music-driven Mandelbrot director.
+const FACE_PX = 480;
+const cube = { ready: false, faces: {}, mandel: null, hist: [], disp: null, peak: null, lastSeq: -1, t0: 0, lastT: 0, pulse: 0, rowKey: '' };
+const FACE_ORDER = ['scope', 'xy', 'spec2', 'spec3', 'notes', 'mandel'];
+const FACE_TITLE = { scope: 'MASTER L/R', xy: 'XY', spec2: 'SPEKTRUM 2D', spec3: 'SPEKTRUM 3D', notes: 'TRACKER', mandel: 'MANDELBROT' };
+
+async function initCube() {
+  if (cube.ready) return;
+  cube.ready = true;
+  cube.t0 = performance.now();
+  for (const c of document.querySelectorAll('#cube canvas')) {
+    c.width = c.height = FACE_PX;
+    cube.faces[c.dataset.face] = { c, g: c.getContext('2d') };
+  }
+  try {
+    const m = Mandel(cube.faces.mandel.c);
+    await m.init({ cpu: false });
+    cube.mandel = m;
+  } catch (e) { console.error(e); }
+}
+
+function faceFrame(g, title) {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.fillStyle = '#020403'; g.fillRect(0, 0, FACE_PX, FACE_PX);
+  g.strokeStyle = 'rgba(57,255,136,0.08)'; g.lineWidth = 1; g.beginPath();
+  for (let i = 1; i < 8; i++) { const p = Math.round(FACE_PX * i / 8) + .5; g.moveTo(p, 0); g.lineTo(p, FACE_PX); g.moveTo(0, p); g.lineTo(FACE_PX, p); }
+  g.stroke();
+  faceLabel(g, title);
+}
+function faceLabel(g, title) {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.font = 'bold 15px ui-monospace, Menlo, monospace'; g.textAlign = 'left';
+  g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(8, 8, g.measureText(title).width + 14, 24);
+  g.fillStyle = '#39ff88'; g.fillText(title, 15, 25);
+}
+function faceTrace(g, d, start, win, color, gain) {
+  g.strokeStyle = color; g.lineWidth = 2.2; g.shadowColor = color; g.shadowBlur = 8;
+  g.beginPath();
+  for (let i = 0; i < win; i++) {
+    const x = i / (win - 1) * FACE_PX, y = FACE_PX / 2 - Math.max(-1, Math.min(1, d[start + i] * gain)) * FACE_PX * 0.42;
+    i ? g.lineTo(x, y) : g.moveTo(x, y);
+  }
+  g.stroke(); g.shadowBlur = 0;
+}
+function cubeBands(p, nb, fMax, binHz) {
+  const out = new Float32Array(nb);
+  for (let b = 0; b < nb; b++) {
+    const f0 = F_MIN * Math.pow(fMax / F_MIN, b / nb), f1 = F_MIN * Math.pow(fMax / F_MIN, (b + 1) / nb);
+    out[b] = Math.max(0, Math.min(1, (toDb(bandValue(p, f0, f1, binHz)) - DB_MIN) / (DB_MAX - DB_MIN)));
+  }
+  return out;
+}
+
+function drawCube() {
+  if (!cube.ready) return;
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - (cube.lastT || now)) / 1000); cube.lastT = now;
+  const scene = $('cubeScene'), W = scene.clientWidth, H = scene.clientHeight;
+  if (!W || !H) return;
+  const v = direct(now);                                 // Mandelbrot director (also tracks the beat)
+  const m = playing ? currentMsg(now) : null;
+  const F = cube.faces, NB = 64;
+
+  // beat pulse from the playing row
+  if (m) {
+    const key = m.order + ':' + m.row;
+    if (key !== cube.rowKey) { cube.rowKey = key; if (m.row % 4 === 0) cube.pulse = m.row % 16 === 0 ? 1 : 0.55; }
+  }
+  cube.pulse *= Math.exp(-dt * 6);
+
+  // spectrum state for the faces
+  if (m) {
+    const sr = m.sampleRate, fMax = Math.min(20000, sr / 2), bands = cubeBands(m.spec, NB, fMax, sr / m.fftSize);
+    if (!cube.disp) { cube.disp = new Float32Array(NB); cube.peak = new Float32Array(NB); }
+    for (let b = 0; b < NB; b++) {
+      cube.disp[b] = Math.max(bands[b], cube.disp[b] - dt * 0.9);
+      cube.peak[b] = Math.max(cube.disp[b], cube.peak[b] - dt * 0.25);
+    }
+    if (m.seq !== cube.lastSeq) { cube.lastSeq = m.seq; cube.hist.push({ t: m.t, v: Float32Array.from(cube.disp) }); }
+  }
+  while (cube.hist.length && now - cube.hist[0].t > HIST_AGE) cube.hist.shift();
+
+  if (m) {
+    const L = m.len, d = m.data, nch = m.channels, ml = nch * L, mr = (nch + 1) * L;
+    // 1 master L/R
+    faceFrame(F.scope.g, FACE_TITLE.scope);
+    const win = 700, st = trigger(d, ml, L, win) - ml;
+    faceTrace(F.scope.g, d, ml + st, win, '#39ff88', 1.6);
+    faceTrace(F.scope.g, d, mr + st, win, 'rgba(255,180,58,0.9)', 1.6);
+    faceLabel(F.scope.g, FACE_TITLE.scope);
+    // 2 XY
+    const gx = F.xy.g; faceFrame(gx, FACE_TITLE.xy);
+    gx.strokeStyle = '#39ff88'; gx.lineWidth = 1.6; gx.shadowColor = '#39ff88'; gx.shadowBlur = 8; gx.beginPath();
+    for (let i = 0; i < L; i++) {
+      const x = FACE_PX / 2 + Math.max(-1, Math.min(1, d[ml + i] * 1.7)) * FACE_PX * 0.44;
+      const y = FACE_PX / 2 - Math.max(-1, Math.min(1, d[mr + i] * 1.7)) * FACE_PX * 0.44;
+      i ? gx.lineTo(x, y) : gx.moveTo(x, y);
+    }
+    gx.stroke(); gx.shadowBlur = 0; faceLabel(gx, FACE_TITLE.xy);
+    // 3 spectrum 2D
+    const g2 = F.spec2.g; faceFrame(g2, FACE_TITLE.spec2);
+    const top = 44, bh = FACE_PX - top - 26, bw = FACE_PX / NB;
+    const grad = g2.createLinearGradient(0, top + bh, 0, top);
+    grad.addColorStop(0, '#1b7a45'); grad.addColorStop(0.55, '#39ff88'); grad.addColorStop(0.85, '#ffb43a'); grad.addColorStop(1, '#ff5a3a');
+    g2.fillStyle = grad; g2.shadowColor = '#39ff88'; g2.shadowBlur = 8;
+    for (let b = 0; b < NB; b++) { const h = cube.disp[b] * bh; g2.fillRect(b * bw + 1, top + bh - h, bw - 2, h); }
+    g2.shadowBlur = 0; g2.fillStyle = '#d8f5e4';
+    for (let b = 0; b < NB; b++) if (cube.peak[b] > 0.01) g2.fillRect(b * bw + 1, top + bh - cube.peak[b] * bh - 2, bw - 2, 3);
+    g2.font = '12px ui-monospace, Menlo, monospace'; g2.fillStyle = 'rgba(57,255,136,0.6)'; g2.textAlign = 'center';
+    const fMax = Math.min(20000, m.sampleRate / 2);
+    for (const f of [100, 1000, 10000]) g2.fillText(f >= 1000 ? f / 1000 + 'k' : String(f), Math.log(f / F_MIN) / Math.log(fMax / F_MIN) * FACE_PX, FACE_PX - 8);
+    faceLabel(g2, FACE_TITLE.spec2);
+    // 4 spectrum 3D: history receding into the depth, fading out
+    const g3 = F.spec3.g; faceFrame(g3, FACE_TITLE.spec3);
+    const yF = FACE_PX - 24, vp = FACE_PX * 0.16, amp = FACE_PX * 0.38, K = 2.4;
+    const pj = (xn, val, z) => { const s = 1 / (1 + z * K); return [FACE_PX / 2 + (xn - 0.5) * (FACE_PX - 24) * s, vp + (yF - vp) * s - val * amp * s]; };
+    for (let i = 0; i < cube.hist.length; i++) {
+      const r = cube.hist[i], z = Math.max(0, Math.min(1, (now - r.t) / HIST_AGE)), fade = Math.pow(1 - z, 1.6);
+      if (fade < 0.02) continue;
+      g3.beginPath(); let [x, y] = pj(0, 0, z); g3.moveTo(x, y);
+      let loud = 0;
+      for (let b = 0; b < NB; b++) { if (r.v[b] > loud) loud = r.v[b]; [x, y] = pj((b + 0.5) / NB, r.v[b], z); g3.lineTo(x, y); }
+      [x, y] = pj(1, 0, z); g3.lineTo(x, y); g3.closePath();
+      g3.fillStyle = `rgba(2,6,4,${(0.55 + 0.4 * fade).toFixed(3)})`; g3.fill();
+      const mix = Math.max(0, Math.min(1, (loud - 0.55) / 0.35));
+      g3.strokeStyle = `rgba(${Math.round(57 + 198 * mix)},${Math.round(255 - 75 * mix)},${Math.round(136 - 78 * mix)},${(0.9 * fade).toFixed(3)})`;
+      g3.lineWidth = i === cube.hist.length - 1 ? 2.2 : 1.2; g3.stroke();
+    }
+    faceLabel(g3, FACE_TITLE.spec3);
+    // 5 tracker notes
+    const gn = F.notes.g; faceFrame(gn, FACE_TITLE.notes);
+    const n = Math.min(song.channels, 8), span = 9, lh = (FACE_PX - 52) / (2 * span + 1);
+    const cw = (FACE_PX - 40) / n, fs = Math.max(9, Math.min(15, Math.floor(cw / 7.2)));
+    gn.font = fs + 'px ui-monospace, Menlo, monospace'; gn.textAlign = 'left';
+    for (let r = m.row - span; r <= m.row + span; r++) {
+      if (r < 0 || r > 63) continue;
+      const y = 44 + (r - m.row + span) * lh;
+      if (r === m.row) { gn.fillStyle = '#39ff88'; gn.fillRect(0, y - 1, FACE_PX, lh); }
+      gn.fillStyle = r === m.row ? '#001a0b' : (r % 4 === 0 ? '#b9d8c6' : '#5f7a6c');
+      gn.fillText(String(r).padStart(2, '0'), 6, y + lh * 0.78);
+      for (let c = 0; c < n; c++) {
+        const cl = song.pattern(m.pattern, r, c);
+        const txt = cw > 100 ? cellText(cl) : (cw > 56 ? noteName(cl.p) + ' ' + (cl.s ? hex(cl.s, 2) : '..') : noteName(cl.p));
+        gn.fillText(txt, 34 + c * cw, y + lh * 0.78);
+      }
+    }
+    faceLabel(gn, FACE_TITLE.notes + '  ' + hex(m.pattern, 2) + '/' + String(m.row).padStart(2, '0'));
+  } else if (!cube.drawnIdle) {
+    for (const k of FACE_ORDER) if (k !== 'mandel') faceFrame(F[k].g, FACE_TITLE[k]);
+    cube.drawnIdle = true;
+  }
+  if (m) cube.drawnIdle = false;
+  // 6 Mandelbrot (GPU instance of its own, same music-driven view)
+  if (cube.mandel) {
+    cube.mandel.draw(v, FACE_PX, FACE_PX, 1);
+    faceLabel(F.mandel.g, FACE_TITLE.mandel);
+  }
+
+  // geometry: size from the scene, slow rotation, a small push on the beat
+  const S = Math.min(W, H) * 0.56, half = S / 2;
+  const el = $('cube');
+  el.style.width = el.style.height = S + 'px';
+  el.style.marginLeft = el.style.marginTop = -half + 'px';
+  const rots = ['rotateY(0deg)', 'rotateY(90deg)', 'rotateY(180deg)', 'rotateY(-90deg)', 'rotateX(90deg) rotateZ(180deg)', 'rotateX(-90deg)'];
+  FACE_ORDER.forEach((k, i) => { F[k].c.style.transform = `${rots[i]} translateZ(${half}px)`; });
+  const t = (now - cube.t0) / 1000;
+  const sc = 1 + 0.035 * cube.pulse;
+  // tumbling slowly about two axes, so every face (top and bottom too) comes to the front
+  el.style.transform = `scale(${sc.toFixed(4)}) rotateX(${(-20 + t * 9).toFixed(2)}deg) rotateY(${(t * 14).toFixed(2)}deg)`;
+
+  if (m) { renderPattern(m.pattern, m.row); renderOrders(m.order); renderStatus(m); }
+}
+
+// ------------------------------------------------------------------ wiring
+$('play').onclick = play;
+$('stop').onclick = stop;
+$('loop').onchange = (e) => node && node.port.postMessage({ type: 'loop', on: e.target.checked });
+$('sep').oninput = (e) => node && node.port.postMessage({ type: 'separation', value: e.target.value / 100 });
+$('pick').onclick = () => { try { $('file').click(); } catch (err) { $('msg').textContent = 'Dateiauswahl nicht möglich: ' + err.message; } };
+$('file').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  $('msg').textContent = 'Lade ' + f.name + ' …';
+  const wasPlaying = playing;
+  if (playing) { playing = false; node.port.postMessage({ type: 'play', on: false }); updateButtons(); }
+  setSong(await f.arrayBuffer(), f.name);
+  if (wasPlaying) play();
+};
+document.addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drop'); });
+document.addEventListener('dragleave', () => document.body.classList.remove('drop'));
+document.addEventListener('drop', async (e) => {
+  e.preventDefault(); document.body.classList.remove('drop');
+  const f = e.dataTransfer.files[0]; if (!f) return;
+  if (playing) { playing = false; node.port.postMessage({ type: 'play', on: false }); updateButtons(); }
+  setSong(await f.arrayBuffer(), f.name);
+});
+
+(async () => {
+  resize();
+  try {
+    wasmModule = await loadWasm();
+    if (self.DEFAULT_SONG_B64) {
+      const bin = atob(self.DEFAULT_SONG_B64);
+      const u = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      setSong(u.buffer, DEFAULT_SONG);
+    } else {
+      const res = await fetch(DEFAULT_SONG);
+      if (res.ok) setSong(await res.arrayBuffer(), DEFAULT_SONG);
+      else $('msg').textContent = 'Kein Standard-Song gefunden – bitte eine .mod-Datei wählen.';
+    }
+    $('play').disabled = $('stop').disabled = false;
+    renderStatus(null);
+  } catch (e) {
+    $('msg').textContent = 'Fehler beim Start: ' + e.message;
+  }
+  $('play').disabled = $('stop').disabled = false;
+  draw();
+})();
+</script>
+</body>
+</html>

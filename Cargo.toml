@@ -1,0 +1,19 @@
+[package]
+name = "modplayer"
+version = "0.1.0"
+edition = "2021"
+description = "Dependency-free ProTracker MOD replayer for WebAssembly (and native)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "mod2wav"
+path = "src/bin/mod2wav.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
