@@ -39,6 +39,8 @@ fn main() {
         (24.0, 2, true, "spec3"),
         (30.0, 3, false, "cube"),
         (34.0, 3, false, "cube2"),
+        (40.0, 4, false, "voxel"),
+        (46.0, 4, false, "voxel2"),
     ];
     let mut view = 0u32;
     let mut spec3d = false;
@@ -83,7 +85,7 @@ fn main() {
         if t_ms >= st * 1000.0 - 2500.0 {
             while view != sv {
                 vis_key(118);
-                view = (view + 1) % 4;
+                view = (view + 1) % 5;
             }
             if spec3d != s3 {
                 vis_key(51);

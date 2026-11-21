@@ -27,8 +27,9 @@
   .box { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
   .box h2 { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--muted); font-weight: normal;
     letter-spacing: .12em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
-  #scope, #mandel, #spec { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; background: #020403; }
-  #mandel, #spec { display: none; background: #000; touch-action: manipulation; }
+  #scope, #mandel, #spec, #voxel { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; background: #020403; }
+  #mandel, #spec, #voxel { display: none; background: #000; touch-action: manipulation; }
+  #voxel { image-rendering: pixelated; }
   #cubeScene { display: none; position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden;
     background: radial-gradient(ellipse at center, #0b1712 0%, #020403 70%); perspective: 1100px; }
   #cube { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; }
@@ -43,7 +44,7 @@
     background: rgba(0,0,0,.45); padding: 3px 7px; border-radius: 3px; text-align: right; line-height: 1.35; }
   .box.fs { position: fixed; inset: 0; z-index: 50; border: 0; border-radius: 0; background: #000; }
   .box.fs h2 { display: none; }
-  .box.fs .viewbox, .box.fs #mandel, .box.fs #spec { width: 100%; height: 100%; aspect-ratio: auto; }
+  .box.fs .viewbox, .box.fs #mandel, .box.fs #spec, .box.fs #voxel { width: 100%; height: 100%; aspect-ratio: auto; }
   .box.fs .viewbox { height: 100vh; }
   #status { padding: 8px 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px 12px; }
   #status b { color: var(--ph); font-weight: normal; }
@@ -81,6 +82,7 @@
         <canvas id="scope"></canvas>
         <canvas id="mandel"></canvas>
         <canvas id="spec"></canvas>
+        <canvas id="voxel"></canvas>
         <div id="cubeScene"><div id="cube">
           <canvas class="face" data-face="scope"></canvas><canvas class="face" data-face="xy"></canvas>
           <canvas class="face" data-face="spec2"></canvas><canvas class="face" data-face="spec3"></canvas>
@@ -89,7 +91,7 @@
         <div id="mhud"></div>
         <div id="mctl">
           <button id="mEng" type="button" class="monly">Engine: GPU</button>
-          <button id="mPal" type="button" class="monly">Farben</button>
+          <button id="mPal" type="button">Farben</button>
           <button id="s3d" type="button" class="sonly">Darstellung: 2D</button>
           <button id="mFs" type="button">Vollbild</button>
         </div>
@@ -118,6 +120,7 @@
 
 <script src="song.js"></script>
 <script src="mandel.js"></script>
+<script src="voxel.js"></script>
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -421,6 +424,7 @@ function draw() {
   if (viewMode === 'mandel') drawMandel();
   else if (viewMode === 'spectrum') drawSpectrum();
   else if (viewMode === 'cube') drawCube();
+  else if (viewMode === 'voxel') drawVoxel();
   else drawOscilloscope();
 }
 
@@ -550,32 +554,58 @@ function drawMandel() {
   if (mcanvas.width !== W || mcanvas.height !== H) { mcanvas.width = W; mcanvas.height = H; dir.dirty = true; }
   const v = direct(performance.now());
   if (dir.dirty || mandel.engine === 'wasm') { mandel.draw(v, cssW, cssH, dpr); dir.dirty = false; }
-  const zoom = 3 / v.size;
-  $('mhud').innerHTML = `${v.place || Mandel.PLACES[dir.place].name} · Zoom ${zoom < 1e4 ? zoom.toFixed(0) : zoom.toExponential(1).replace('e+', '·10^')}×` +
-    `<br>${mandel.info || '…'}` + (v.m ? `<br>Pos ${v.m.order} · Zeile ${String(Math.floor(v.rowF)).padStart(2, '0')} · Pegel ${(dir.inten * 100).toFixed(0)} %` : '');
+  showHud(v, mandel.info);
   if (last && playing) showPosition(last);
 }
 
-const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube'];
-const VIEW_NAME = { oscilloscope: 'Oszilloskop', mandel: 'Mandelbrot', spectrum: 'Spektrum', cube: 'Würfel' };
+/** HUD of the Mandelbrot and voxel views: place, zoom, engine info, position and level. */
+function showHud(v, info) {
+  const zoom = 3 / v.size;
+  $('mhud').innerHTML = `${v.place || Mandel.PLACES[dir.place].name} · Zoom ${zoom < 1e4 ? zoom.toFixed(0) : zoom.toExponential(1).replace('e+', '·10^')}×` +
+    `<br>${info || '…'}` + (v.m ? `<br>Pos ${v.m.order} · Zeile ${String(Math.floor(v.rowF)).padStart(2, '0')} · Pegel ${(dir.inten * 100).toFixed(0)} %` : '');
+}
+
+const vcanvas = $('voxel');
+let voxel = null;
+/** The voxel view: the director's picture as a landscape, seen from an orbiting camera. */
+function drawVoxel() {
+  if (!voxel) return;
+  const cssW = vcanvas.clientWidth, cssH = vcanvas.clientHeight;
+  if (!cssW || !cssH) return;
+  const v = direct(performance.now());
+  voxel.draw(v, cssW, cssH, Math.min(window.devicePixelRatio || 1, 2));
+  showHud(v, voxel.info);
+  if (last && playing) showPosition(last);
+}
+
+const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel'];
+const VIEW_NAME = { oscilloscope: 'Oszilloskop', mandel: 'Mandelbrot', spectrum: 'Spektrum', cube: 'Würfel', voxel: 'Voxel' };
 const VIEW_TITLE = { oscilloscope: 'Oszilloskop · Master L/R · XY · Kanäle', mandel: 'Mandelbrot-Zoom im Takt der Musik',
   spectrum: 'Spektrum · FFT (Rust, 4096 Punkte, Hann-Fenster) · Spektrogramm',
-  cube: 'Würfel · Oszilloskop · XY · Spektrum 2D/3D · Noten · Mandelbrot' };
+  cube: 'Würfel · Oszilloskop · XY · Spektrum 2D/3D · Noten · Mandelbrot',
+  voxel: 'Voxel-Landschaft aus dem Mandelbrot-Zoom · Kameraflug um die Gipfel' };
 /** Switches the view: shows its canvas and controls, starts the Mandelbrot engine on first use. */
 async function setView(mode) {
   viewMode = mode;
-  const md = mode === 'mandel', sm = mode === 'spectrum';
+  const md = mode === 'mandel', sm = mode === 'spectrum', vx = mode === 'voxel';
   $('view').textContent = 'Ansicht: ' + VIEW_NAME[mode];
   $('viewTitle').textContent = VIEW_TITLE[mode];
   canvas.style.display = mode === 'oscilloscope' ? 'block' : 'none';
   mcanvas.style.display = md ? 'block' : 'none';
+  vcanvas.style.display = vx ? 'block' : 'none';
   $('spec').style.display = sm ? 'block' : 'none';
   $('cubeScene').style.display = mode === 'cube' ? 'block' : 'none';
   if (mode === 'cube') initCube();
-  $('mctl').style.display = md || sm || mode === 'cube' ? 'flex' : 'none';
+  $('mctl').style.display = md || sm || vx || mode === 'cube' ? 'flex' : 'none';
   for (const b of document.querySelectorAll('#mctl .monly')) b.style.display = md ? '' : 'none';
   for (const b of document.querySelectorAll('#mctl .sonly')) b.style.display = sm ? '' : 'none';
-  $('mhud').style.display = md ? 'block' : 'none';
+  $('mPal').style.display = md || vx ? '' : 'none';
+  $('mhud').style.display = md || vx ? 'block' : 'none';
+  if (vx && !voxel) {
+    const x = Voxel(vcanvas);
+    if (await x.init()) voxel = x;
+    else $('msg').textContent = 'Voxel-Ansicht nicht möglich: WebAssembly-SIMD fehlt';
+  }
   if (md && !mandel) {
     try {
       const m = Mandel(mcanvas);
@@ -598,7 +628,10 @@ $('mEng').onclick = () => {
   $('mEng').textContent = 'Engine: ' + (mandel.engine === 'gpu' ? 'GPU' : 'Rust/WASM');
   dir.dirty = true;
 };
-$('mPal').onclick = () => { if (mandel) { mandel.nextPalette(); dir.dirty = true; } };
+$('mPal').onclick = () => {
+  if (mandel) { mandel.nextPalette(); dir.dirty = true; }
+  if (voxel) voxel.nextPalette();
+};
 $('mFs').onclick = async () => {
   const box = $('viewBoxOuter');
   const on = !box.classList.contains('fs');
@@ -614,6 +647,7 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 mcanvas.addEventListener('dblclick', () => $('mFs').click());
+vcanvas.addEventListener('dblclick', () => $('mFs').click());
 // small debug hook for automated tests
 window.__mt = { dir, state: () => ({ viewMode, mode3d: spec.mode3d, hist: spec.hist.length, nb: spec.nb, specSeq: spec.lastSeq, playing, engine: mandel && mandel.engine, info: mandel && mandel.info, view: dir.view && { size: dir.view.size, rot: dir.view.rot, place: dir.view.place, flash: dir.view.flash }, inten: dir.inten }) , setEngine: (e) => { mandel.engine = e; dir.dirty = true; } };
 

@@ -34,14 +34,14 @@ const runJobs = () => {
   const [re0, im0, step, w, h, maxit] = [0, 1, 2, 3, 4, 5].map(vi.vis_mb_param);
   const n = w * h * 4, need = kbase + n - kernel.memory.buffer.byteLength;
   if (need > 0) kernel.memory.grow(Math.ceil(need / 65536));
-  kernel.render(kbase, w, h, re0, im0, step, maxit, 0, 2048, 16, 0);
+  kernel.render(kbase, w, h, re0, im0, step, maxit, 0, 1 << 30, 16, 0);
   new Uint32Array(vi.memory.buffer, vi.vis_mb_back_ptr(), w * h).set(new Uint32Array(kernel.memory.buffer, kbase, w * h));
   vi.vis_mb_rows(gen, h);
   jobs++;
 };
 
 const W = 1024, H = 640, nch = au.mp_num_channels(), n = Math.min(nch, 8), off = vi.vis_spec_offset();
-const views = [['oscilloscope', null], ['mandelbrot', 'v'], ['spectrum 2D', 'v'], ['spectrum 3D', '3'], ['cube', 'v']];
+const views = [['oscilloscope', null], ['mandelbrot', 'v'], ['spectrum 2D', 'v'], ['spectrum 3D', '3'], ['cube', 'v'], ['voxel', 'v']];
 let t = 0, frameT = 0;
 for (const [name, key] of views) {
   if (key) vi.vis_key(key.charCodeAt(0));

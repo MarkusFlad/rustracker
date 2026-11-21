@@ -137,5 +137,7 @@ mod vis_osc;
 mod vis_spec;
 #[path = "../src/vis_ui.rs"]
 mod vis_ui;
+#[path = "../src/vis_voxel.rs"]
+mod vis_voxel;
 #[path = "../src/api.rs"]
 pub mod api;

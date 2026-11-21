@@ -85,6 +85,7 @@ cargo doc --no-deps --open
 | `www/worklet.js` | AudioWorklet: ruft `mp_render` auf und schickt Scope-Daten an die Oberfläche |
 | `www/index.html` | Oberfläche, Oszilloskop (Canvas mit Phosphor-Nachleuchten), Pattern-Ansicht, Musik-Regie für den Mandelbrot-Zoom |
 | `www/mandel.js` | Mandelbrot-Engine aus dem Echtzeit-Zoomer: GPU (WebGL2, fp32/df64) und der Rust-SIMD-Kern in Web Workern |
+| `www/voxel.js` | Voxel-Landschaft aus dem Mandelbrot-Zoom (Höhenkarte vom SIMD-Kern, Voxel-Space-Rendering) |
 | `kernel/mandel_wasm.rs` | der SIMD-Kern des Zoomers (f64x2, 8 Pixel verschränkt), gebaut zu `mandel.wasm`; liefert Farben oder Palettenindizes |
 
 Unterstützt werden 15/31-Sample-MODs mit 4 bis 32 Kanälen (M.K., FLT4/8, xCHN, xxCH)
@@ -148,6 +149,28 @@ die jedes Bild neu gezeichnet wird:
 Der Würfel dreht sich um zwei Achsen, sodass nach und nach jede Seite nach vorne kommt. Auf
 jedem Schlag pulsiert er leicht, auf der Eins jedes Takts etwas stärker.
 
+## Voxel-Ansicht
+
+Die fünfte Ansicht macht aus dem Mandelbrot-Zoom eine Landschaft aus Voxeln. Grundlage ist
+dasselbe Bild der Musik-Regie, als quadratische Karte der Iterationszahlen:
+
+- Die Mandelbrotmenge selbst liegt auf Höhe null.
+- Je weniger Iterationen ein Punkt braucht, desto höher liegt er. Die Höhen sind über das Bild
+  histogramm-normiert: Die Höhe ist der Anteil der Punkte, die mehr Iterationen brauchen. So
+  verteilen sie sich gleichmäßig, und die Bereiche mit den wenigsten Iterationen bilden die Gipfel.
+- Jedes Voxel hat die Farbe des 2D-Bildes, inklusive Palettenverschiebung und Lichtblitz, und
+  wird nach seiner Neigung beleuchtet. In der Ferne verschwimmt es im Dunst.
+- Die Kamera umkreist die Landschaft einmal pro Minute und schaut dabei links an der Mitte vorbei,
+  fliegt also um die Gipfel herum. Auf jedem Schlag sinkt sie ein kleines Stück ab.
+- Der Zoom der Musik-Regie lässt die Landschaft wachsen. Ein neues Bild ersetzt die Karte erst,
+  wenn es fertig ist, dazwischen wird das alte passend zum aktuellen Zoom umgerechnet.
+
+Gezeichnet wird mit dem klassischen Voxel-Space-Verfahren: ein Strahl pro Bildspalte, von vorn
+nach hinten über die Höhenkarte, jede Stelle als senkrechter Streifen über dem, was schon näher
+liegt. In der Framebuffer-Edition steckt das in `src/vis_voxel.rs` (die Karte rechnet der
+SIMD-Kern in den Workern), in der klassischen Edition in `www/voxel.js` (eigener Worker-Pool mit
+dem SIMD-Kern, gerendert in reduzierter Auflösung).
+
 ## Continuous Integration
 
 `.github/workflows/ci.yml` läuft bei jedem Push und Pull Request:
@@ -176,7 +199,7 @@ node tests/vis_smoke.mjs www-fb/modplayer.wasm www/drozerix_-_neon_techno.mod ww
 ## Framebuffer-Edition (`www-fb/`)
 
 Eine zweite Oberfläche, bei der **jedes Pixel in Rust gezeichnet wird**: Knöpfe, Schrift,
-Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel und Pattern-Ansicht. Rust rendert in einen
+Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel, Voxel-Landschaft und Pattern-Ansicht. Rust rendert in einen
 RGBA-Framebuffer im WASM-Speicher, JavaScript legt ihn per `putImageData` auf ein Canvas.
 Das JavaScript (gut 100 Zeilen samt dem kleinen Worker für den Mandelbrot-Kern) macht nur noch Folgendes:
 
@@ -192,6 +215,7 @@ Das JavaScript (gut 100 Zeilen samt dem kleinen Worker für den Mandelbrot-Kern)
 | `src/vis_mandel.rs` | Musik-Regie, Mandelbrot (Job-Protokoll für die Worker oder eigener Pfad, Reprojektion) |
 | `src/vis_spec.rs` | Spektrum 2D mit Spektrogramm und 3D-Verlauf mit Floating Horizon |
 | `src/vis_cube.rs` | Würfel mit sechs Live-Flächen, perspektivisch korrekte Texturen |
+| `src/vis_voxel.rs` | Voxel-Landschaft aus dem Mandelbrot-Zoom mit Kameraflug |
 | `src/vis_ui.rs` | Knopfleiste, Eingabe, Seitenleiste mit Order-Liste und Pattern |
 | `src/gfx.rs` | Framebuffer-Primitive: Rechtecke, Linien mit Glow, Text |
 | `src/font.rs` | eigener 5×7-Bitmap-Font (erzeugt von `tools/make_font.py`) |

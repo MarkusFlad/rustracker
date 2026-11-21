@@ -321,5 +321,8 @@ Mandel.PLACES = [
   { name: 'Spirale', cx: -0.10109636384562, cy: 0.95628651080914, min: 2e-5 },
   { name: 'Mini-Mandelbrot', cx: -1.768778833, cy: -0.001738996, min: 4e-7 },
 ];
+/** Palette helpers, shared with the voxel view (voxel.js). */
+Mandel.makePalette = makePalette;
+Mandel.PALETTES = PALETTES;
 self.Mandel = Mandel;
 })();

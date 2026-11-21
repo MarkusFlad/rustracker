@@ -196,6 +196,11 @@ impl Vis {
 
     /// The back buffer is complete: show it and adapt the resolution.
     pub(crate) fn mb_finish(&mut self) {
+        self.mb_done = if self.mb_done == 0xffff_fffe {
+            1
+        } else {
+            self.mb_done + 1
+        };
         self.mb_front = 1 - self.mb_front;
         self.f_re0 = self.b_re0;
         self.f_im0 = self.b_im0;
@@ -379,7 +384,7 @@ impl Vis {
     }
 
     /// Info line in the top right corner; the place name is dropped if it does not fit.
-    fn draw_mandel_hud(&self, s: &Surface) {
+    pub(crate) fn draw_mandel_hud(&self, s: &Surface) {
         let fs = self.fs;
         let mut t = TextBuf::new();
         place_name(&mut t, self.d_place);

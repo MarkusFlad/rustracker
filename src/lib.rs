@@ -48,6 +48,7 @@ mod vis_mandel;
 mod vis_osc;
 mod vis_spec;
 mod vis_ui;
+mod vis_voxel;
 
 #[cfg(target_arch = "wasm32")]
 #[panic_handler]

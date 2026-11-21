@@ -215,7 +215,7 @@ impl Vis {
     }
 
     /// The face Mandelbrot needs a square buffer of its own resolution.
-    fn keep_face_mandel_going(&mut self) {
+    pub(crate) fn keep_face_mandel_going(&mut self) {
         if self.b_active && !self.b_face {
             self.b_active = false;
         }
@@ -347,7 +347,7 @@ fn face_note_row(f: &Surface, pl: &Player, pat: usize, r: i32, current: bool, y:
 }
 
 /// Fills the surface with a vertical gradient from `top` to `bottom`.
-fn draw_vertical_gradient(s: &Surface, top: u32, bottom: u32) {
+pub(crate) fn draw_vertical_gradient(s: &Surface, top: u32, bottom: u32) {
     let mut y = 0;
     while y < s.h {
         let t = (y * 256 / s.h) as u32;

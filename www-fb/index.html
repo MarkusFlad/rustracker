@@ -112,7 +112,7 @@ onmessage = async (e) => {
   await ready;
   const n = d.w * d.rows * 4, need = base + n - ex.memory.buffer.byteLength;
   if (need > 0) ex.memory.grow(Math.ceil(need / 65536));
-  ex.render(base, d.w, d.rows, d.re0, d.im0, d.step, d.maxit, 0, 2048, 16, 0);
+  ex.render(base, d.w, d.rows, d.re0, d.im0, d.step, d.maxit, 0, 1 << 30, 16, 0);
   const buf = ex.memory.buffer.slice(base, base + n);
   postMessage({ gen: d.gen, y0: d.y0, w: d.w, rows: d.rows, buf }, [buf]);
 };`;

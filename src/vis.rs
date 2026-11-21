@@ -71,6 +71,9 @@ pub(crate) const V_OSC: u32 = 0;
 pub(crate) const V_MANDEL: u32 = 1;
 pub(crate) const V_SPEC: u32 = 2;
 pub(crate) const V_CUBE: u32 = 3;
+pub(crate) const V_VOXEL: u32 = 4;
+/// Number of views.
+pub(crate) const N_VIEWS: u32 = 5;
 
 /// What the worklet reported with one slot: when it is heard and where the replayer was.
 pub(crate) struct Msg {
@@ -246,6 +249,14 @@ pub struct Vis {
     pub(crate) action_arg: i32,
     pub(crate) ready: bool,
     pub(crate) d_has_e: bool,
+    // voxel view: height map and lighting of the front Mandelbrot buffer
+    pub(crate) mb_done: u32,
+    pub(crate) vx_seen: u32,
+    pub(crate) vx_ready: bool,
+    pub(crate) vx_hist: [u32; crate::vis_voxel::HIST_BINS],
+    pub(crate) vx_cdf: [u32; crate::vis_voxel::HIST_BINS],
+    pub(crate) vx_h: [u16; MB_MAX],
+    pub(crate) vx_l: [u8; MB_MAX],
 }
 
 impl Vis {
@@ -339,6 +350,13 @@ impl Vis {
             action_arg: 0,
             ready: false,
             d_has_e: false,
+            mb_done: 0,
+            vx_seen: 0,
+            vx_ready: false,
+            vx_hist: [0; crate::vis_voxel::HIST_BINS],
+            vx_cdf: [0; crate::vis_voxel::HIST_BINS],
+            vx_h: [0; MB_MAX],
+            vx_l: [0; MB_MAX],
         }
     }
 
@@ -701,9 +719,12 @@ impl Vis {
             self.draw_spec3(v, now, cur, true);
         } else if self.view == V_SPEC {
             self.draw_spec2(v, dt, cur, true);
-        } else {
+        } else if self.view == V_CUBE {
             self.direct(now, dt, cur, pl);
             self.draw_cube(v, now, dt, cur, pl);
+        } else {
+            self.direct(now, dt, cur, pl);
+            self.draw_voxel(v, now, dt);
         }
     }
 }

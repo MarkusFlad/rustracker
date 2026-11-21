@@ -71,7 +71,7 @@ impl Vis {
             return ACT_OPEN;
         }
         if id == B_VIEW {
-            self.view = (self.view + 1) % 4;
+            self.view = (self.view + 1) % N_VIEWS;
             self.f_valid = false;
             return ACT_NONE;
         }
@@ -215,7 +215,7 @@ impl Vis {
             let on = self.spec3d;
             x = self.add_button(s, x, self.bar_y, h, b"3D", B_3D, on);
         }
-        if self.view == V_MANDEL || self.view == V_CUBE {
+        if self.view == V_MANDEL || self.view == V_CUBE || self.view == V_VOXEL {
             x = self.add_button(s, x, self.bar_y, h, b"FARBEN", B_PAL, false);
         }
         let on = self.looping;
@@ -238,6 +238,8 @@ impl Vis {
                 self.add_button(s, x, y, h, b"MANDEL", B_VIEW, false)
             } else if v == V_SPEC {
                 self.add_button(s, x, y, h, b"SPEKTR", B_VIEW, false)
+            } else if v == V_VOXEL {
+                self.add_button(s, x, y, h, b"VOXEL", B_VIEW, false)
             } else {
                 self.add_button(s, x, y, h, b"W\xc8RFEL", B_VIEW, false)
             }
@@ -247,6 +249,8 @@ impl Vis {
             self.add_button(s, x, y, h, b"ANSICHT: MANDELBROT", B_VIEW, false)
         } else if v == V_SPEC {
             self.add_button(s, x, y, h, b"ANSICHT: SPEKTRUM", B_VIEW, false)
+        } else if v == V_VOXEL {
+            self.add_button(s, x, y, h, b"ANSICHT: VOXEL", B_VIEW, false)
         } else {
             self.add_button(s, x, y, h, b"ANSICHT: W\xc8RFEL", B_VIEW, false)
         }
