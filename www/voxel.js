@@ -7,7 +7,8 @@
 // 2D picture, lit by its slope. A camera orbits the landscape and looks past its centre,
 // so it flies around the peaks. Rendering is the classic voxel-space algorithm, one ray per
 // screen column, into an ImageData at reduced resolution (the canvas is scaled up).
-// Same algorithm as the framebuffer edition (src/vis_voxel.rs).
+// Same algorithm as the framebuffer edition (src/vis_voxel.rs). The renderer itself is
+// exported as `VoxelSpace` and also used by the lake view (lake.js).
 (function () {
 'use strict';
 
@@ -17,7 +18,11 @@ const HIST_BINS = 4096;     // one bin per iteration
 const EXTENT = 1.6;         // half width of the landscape (the view spans ±1)
 const HMAX = 0.55;          // world height of the highest voxels
 const ZMAX = 2.6;           // farthest distance a ray travels
-const MAX_W = 720;          // render width limit (pixels)
+const MAX_W = 720;          // render width limit, coarse mode (pixels, scaled up blocky)
+const MAX_W_FINE = 1440;    // render width limit, fine mode
+/** Camera path: once a minute around the centre, looking past it to the left. */
+const ORBIT = { speed: 0.105, radius: 0.85, breathe: 0.15, breatheRate: 0.23, height: 0.85, rise: 0.06, riseRate: 0.17,
+  risePhase: 0, look: 0.55, horizon: 0.24, aim: 0, aimHeight: 0 };
 const BG = rgb(2, 5, 4), FOG = rgb(16, 34, 27), BLACK = rgb(0, 0, 0), WHITE = rgb(230, 245, 236);
 const INSIDE = 0xffffffff;
 
@@ -45,6 +50,98 @@ onmessage = async (e) => {
   postMessage({ gen: d.gen, y0: d.y0, rows: d.rows, buf }, [buf]);
 };`;
 
+/**
+ * Camera on an orbit (see Orbit in voxel_space.rs) at time t (s): circling, breathing in
+ * and out, rising and sinking; with `aim` > 0 the horizon keeps the centre in view.
+ */
+function orbitCamera(o, t, dip, H) {
+  const ang = t * o.speed, r = o.radius + o.breathe * Math.sin(t * o.breatheRate), yaw = ang + Math.PI + o.look;
+  const fx = Math.cos(yaw), fy = Math.sin(yaw), focal = H * 0.85;
+  const z = o.height + o.rise * Math.sin(t * o.riseRate + o.risePhase) - dip;
+  const horizon = o.aim > 0 ? H * o.aim - (z - o.aimHeight) * focal / (r * Math.cos(o.look)) : H * o.horizon;
+  return { x: r * Math.cos(ang), y: r * Math.sin(ang), z, fx, fy, rx: fy, ry: -fx, focal, horizon };
+}
+
+/**
+ * Voxel-space rendering of a height map into a pixel buffer (over the sky already in it).
+ * map: {heights (0..1000), colours (lit, u32), w, h, x0, y0, k (cells per world unit), extent}.
+ * fine: smooth surface (bilinear heights and colours, finer ray steps) instead of voxels.
+ * map.shore (optional, fine mode): {edge (signed distance to the shoreline per cell, negative =
+ * water), waterHeights, waterColours, landHeights, landColours, beachColours, beach, blend};
+ * then water, beach and land are chosen per pixel, so the shoreline is a smooth curve.
+ */
+function renderHeightmap(px, W, H, cam, map, flash, fine) {
+  const grow = fine ? 0.0065 : 0.011, add = fine ? 0.0009 : 0.0015, hs = map.heights, cs = map.colours, mw = map.w;
+  const sh = fine ? map.shore : null;
+  const col4 = (a, tx, ty, i00, i10, i01, i11) => mix(mix(a[i00], a[i10], tx * 256 | 0), mix(a[i01], a[i11], tx * 256 | 0), ty * 256 | 0);
+  for (let col = 0; col < W; col++) {
+    const off = (col - W / 2 + 0.5) / cam.focal, dx = cam.fx + cam.rx * off, dy = cam.fy + cam.ry * off;
+    let ybuf = H;
+    for (let z = 0.06; z < ZMAX && ybuf > 0; z += z * grow + add) {
+      const wx = cam.x + dx * z, wy = cam.y + dy * z, e = map.extent;
+      if (wx < -e || wx > e || wy < -e || wy > e) continue;
+      const bx = map.x0 + wx * map.k, by = map.y0 - wy * map.k;
+      if (bx < 0 || by < 0 || bx >= mw || by >= map.h) continue;
+      let hh, i00, i10, i01, i11, tx, ty, edge = 0;
+      if (fine) {
+        const fx = Math.floor(bx - 0.5), fy = Math.floor(by - 0.5);
+        tx = bx - 0.5 - fx; ty = by - 0.5 - fy;
+        const x0 = Math.max(0, Math.min(mw - 1, fx)), y0 = Math.max(0, Math.min(map.h - 1, fy));
+        const x1 = Math.min(x0 + 1, mw - 1), y1 = Math.min(y0 + 1, map.h - 1);
+        i00 = y0 * mw + x0; i10 = y0 * mw + x1; i01 = y1 * mw + x0; i11 = y1 * mw + x1;
+        const lerp = (a) => (a[i00] * (1 - tx) + a[i10] * tx) * (1 - ty) + (a[i01] * (1 - tx) + a[i11] * tx) * ty;
+        if (sh) {
+          edge = lerp(sh.edge);
+          hh = lerp(edge < 0 ? sh.waterHeights : sh.landHeights);
+        } else hh = lerp(hs);
+      } else {
+        i00 = (by | 0) * mw + (bx | 0);
+        hh = hs[i00];
+      }
+      const sy = Math.floor(cam.horizon + (cam.z - hh * (HMAX / 1000)) * cam.focal / z);
+      if (sy >= ybuf) continue;
+      let lit;
+      if (sh) {                         // water, beach, land with soft transitions
+        const toLand = Math.max(0, Math.min(1, 0.5 + edge / sh.blend));
+        const toGrass = Math.max(0, Math.min(1, 0.5 + (edge - sh.beach) / sh.blend));
+        const water = toLand < 1 ? col4(sh.waterColours, tx, ty, i00, i10, i01, i11) : 0;
+        const ground = toLand > 0 ? mix(toGrass < 1 ? col4(sh.beachColours, tx, ty, i00, i10, i01, i11) : 0,
+          toGrass > 0 ? col4(sh.landColours, tx, ty, i00, i10, i01, i11) : 0, toGrass * 256 | 0) : 0;
+        lit = mix(water, ground, toLand * 256 | 0);
+      } else lit = fine ? col4(cs, tx, ty, i00, i10, i01, i11) : cs[i00];
+      const fog = z / ZMAX;
+      let c = mix(lit, FOG, Math.floor(fog * fog * 230));
+      if (flash > 0) c = mix(c, WHITE, flash);
+      for (let y = Math.max(sy, 0); y < ybuf; y++) px[y * W + col] = c;
+      ybuf = sy;
+    }
+  }
+}
+
+/** Render target with a sky gradient; CSS scales it up (blocky in the coarse mode). */
+function Target(canvas) {
+  const ctx = canvas.getContext('2d');
+  let img = null, px = null, sky = null;
+  return {
+    /** Sizes the target for the canvas and fills it with the sky; returns {px, W, H}. */
+    begin(cssW, cssH, dpr, fine) {
+      const W = Math.min(fine ? MAX_W_FINE : MAX_W, Math.round(cssW * dpr)), H = Math.max(1, Math.round(cssH * W / cssW));
+      canvas.style.imageRendering = fine ? 'auto' : 'pixelated';
+      if (!img || img.width !== W || img.height !== H) {
+        canvas.width = W; canvas.height = H;
+        img = ctx.createImageData(W, H);
+        px = new Uint32Array(img.data.buffer);
+        sky = new Uint32Array(H);
+        for (let y = 0; y < H; y++) sky[y] = mix(BG, FOG, Math.floor(y * 256 / H));
+      }
+      for (let y = 0; y < H; y++) px.fill(sky[y], y * W, y * W + W);
+      return { px, W, H };
+    },
+    /** Shows the rendered pixels. */
+    end() { ctx.putImageData(img, 0, 0); },
+  };
+}
+
 /** Iteration limit for the zoom depth (as in mandel.js, a multiple of 4). */
 function maxIter(v) {
   const l = Math.log2(Math.max(1, 3 / v.size));
@@ -56,13 +153,14 @@ function maxIter(v) {
  * Call init() once; draw() every frame.
  */
 function Voxel(canvas) {
-  const ctx = canvas.getContext('2d');
+  const target = Target(canvas);
   let palIdx = 0, pal = Mandel.makePalette(Mandel.PALETTES[0]);
   const workers = [];
   let gen = 0, pending = 0, back = null, front = null, lastMs = 0, jobStart = 0;
-  const heights = new Uint16Array(N * N), light = new Uint8Array(N * N);
+  const heights = new Uint16Array(N * N), light = new Uint8Array(N * N), colours = new Uint32Array(N * N);
   const hist = new Uint32Array(HIST_BINS), cdf = new Uint32Array(HIST_BINS);
-  let img = null, px = null, sky = null, t0 = performance.now(), pulse = 0, rowKey = '', lastT = 0;
+  const t0 = performance.now();
+  let pulse = 0, rowKey = '', lastT = 0;
 
   /** Starts a new picture of view `v`, split into row bands for the workers. */
   function start(v) {
@@ -117,16 +215,6 @@ function Voxel(canvas) {
     }
   }
 
-  /** ImageData of the render size and the sky gradient (BG at the top, FOG at the bottom). */
-  function resize(W, H) {
-    if (img && img.width === W && img.height === H) return;
-    canvas.width = W; canvas.height = H;
-    img = ctx.createImageData(W, H);
-    px = new Uint32Array(img.data.buffer);
-    sky = new Uint32Array(H);
-    for (let y = 0; y < H; y++) sky[y] = mix(BG, FOG, Math.floor(y * 256 / H));
-  }
-
   /** Beat pulse from the director's row (a stronger one on the first beat of a bar). */
   function updatePulse(v, now) {
     const dt = Math.min(0.1, (now - (lastT || now)) / 1000); lastT = now;
@@ -137,34 +225,12 @@ function Voxel(canvas) {
     pulse *= Math.exp(-dt * 6);
   }
 
-  /** Orbiting camera: once a minute around the centre, looking past it to the left. */
-  function camera(now, H) {
-    const t = (now - t0) / 1000, ang = t * 0.105, r = 0.85 + 0.15 * Math.sin(t * 0.23), yaw = ang + Math.PI + 0.55;
-    const fx = Math.cos(yaw), fy = Math.sin(yaw);
-    return { x: r * Math.cos(ang), y: r * Math.sin(ang), z: 0.85 + 0.06 * Math.sin(t * 0.17) - 0.04 * pulse,
-      fx, fy, rx: fy, ry: -fx, focal: H * 0.85, horizon: H * 0.24 };
-  }
-
-  /** Marches the ray of column `col` front to back and draws the voxels that show. */
-  function column(col, W, H, cam, map, shift, flash) {
-    const off = (col - W / 2 + 0.5) / cam.focal, dx = cam.fx + cam.rx * off, dy = cam.fy + cam.ry * off;
+  /** Lit colour of every voxel with the current palette shift (black inside the set). */
+  function buildColours(shift) {
     const buf = front.buf;
-    let ybuf = H;
-    for (let z = 0.06; z < ZMAX && ybuf > 0; z += z * 0.011 + 0.0015) {
-      const wx = cam.x + dx * z, wy = cam.y + dy * z;
-      if (wx < -EXTENT || wx > EXTENT || wy < -EXTENT || wy > EXTENT) continue;
-      const bx = map.x0 + wx * map.k, by = map.y0 - wy * map.k;
-      if (bx < 0 || by < 0 || bx >= N || by >= N) continue;
-      const i = (by | 0) * N + (bx | 0);
-      const sy = Math.floor(cam.horizon + (cam.z - heights[i] * (HMAX / 1000)) * cam.focal / z);
-      if (sy >= ybuf) continue;
+    for (let i = 0; i < buf.length; i++) {
       const v = buf[i];
-      let c = dim(v === INSIDE ? BLACK : pal[(v + shift) % 2048], light[i] + 1);
-      const fog = z / ZMAX;
-      c = mix(c, FOG, Math.floor(fog * fog * 230));
-      if (flash > 0) c = mix(c, WHITE, flash);
-      for (let y = Math.max(sy, 0); y < ybuf; y++) px[y * W + col] = c;
-      ybuf = sy;
+      colours[i] = dim(v === INSIDE ? BLACK : pal[(v + shift) % 2048], light[i] + 1);
     }
   }
 
@@ -189,24 +255,25 @@ function Voxel(canvas) {
     /** Resolution and time of the last height map, for the HUD. */
     get info() { return `Voxel · ${N}×${N} · ${Math.round(lastMs)} ms`; },
     /** Draws view `v` into a canvas of cssW x cssH CSS pixels at `dpr` device pixels each. */
-    draw(v, cssW, cssH, dpr) {
+    draw(v, cssW, cssH, dpr, fine) {
       const now = performance.now();
       if (!back) start(v);
       updatePulse(v, now);
-      const W = Math.min(MAX_W, Math.round(cssW * dpr)), H = Math.max(1, Math.round(cssH * W / cssW));
-      resize(W, H);
-      for (let y = 0; y < H; y++) px.fill(sky[y], y * W, y * W + W);
+      const { px, W, H } = target.begin(cssW, cssH, dpr, fine);
       if (front) {
-        const cam = camera(now, H);
-        const map = { x0: (v.cx - front.re0) / front.step, y0: (front.im0 - v.cy) / front.step, k: v.size * 0.5 / front.step };
         const shift = (((Math.round(v.shift || 0)) % 2048) + 2048) % 2048;
-        const flash = Math.floor(Math.max(0, Math.min(0.6, v.flash || 0)) * 256);
-        for (let col = 0; col < W; col++) column(col, W, H, cam, map, shift, flash);
+        buildColours(shift);
+        const cam = orbitCamera(ORBIT, (now - t0) / 1000, 0.04 * pulse, H);
+        const map = { heights, colours, w: N, h: N, extent: EXTENT,
+          x0: (v.cx - front.re0) / front.step, y0: (front.im0 - v.cy) / front.step, k: v.size * 0.5 / front.step };
+        renderHeightmap(px, W, H, cam, map, Math.floor(Math.max(0, Math.min(0.6, v.flash || 0)) * 256), fine);
       }
-      ctx.putImageData(img, 0, 0);
+      target.end();
     },
   };
 }
 
 self.Voxel = Voxel;
+/** The renderer, shared with the lake view. */
+self.VoxelSpace = { rgb, mix, dim, orbitCamera, renderHeightmap, Target, HMAX, FOG, WHITE };
 })();

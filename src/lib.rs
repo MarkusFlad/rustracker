@@ -44,11 +44,13 @@ pub mod replayer;
 pub mod spectrum;
 pub mod vis;
 mod vis_cube;
+mod vis_lake;
 mod vis_mandel;
 mod vis_osc;
 mod vis_spec;
 mod vis_ui;
 mod vis_voxel;
+pub mod voxel_space;
 
 #[cfg(target_arch = "wasm32")]
 #[panic_handler]

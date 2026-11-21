@@ -85,7 +85,8 @@ cargo doc --no-deps --open
 | `www/worklet.js` | AudioWorklet: ruft `mp_render` auf und schickt Scope-Daten an die Oberfläche |
 | `www/index.html` | Oberfläche, Oszilloskop (Canvas mit Phosphor-Nachleuchten), Pattern-Ansicht, Musik-Regie für den Mandelbrot-Zoom |
 | `www/mandel.js` | Mandelbrot-Engine aus dem Echtzeit-Zoomer: GPU (WebGL2, fp32/df64) und der Rust-SIMD-Kern in Web Workern |
-| `www/voxel.js` | Voxel-Landschaft aus dem Mandelbrot-Zoom (Höhenkarte vom SIMD-Kern, Voxel-Space-Rendering) |
+| `www/voxel.js` | Voxel-Landschaft aus dem Mandelbrot-Zoom (Höhenkarte vom SIMD-Kern) und der gemeinsame Voxel-Space-Renderer |
+| `www/lake.js` | See aus Voxeln: Wellengleichung, angeregt von Bass und Takt |
 | `kernel/mandel_wasm.rs` | der SIMD-Kern des Zoomers (f64x2, 8 Pixel verschränkt), gebaut zu `mandel.wasm`; liefert Farben oder Palettenindizes |
 
 Unterstützt werden 15/31-Sample-MODs mit 4 bis 32 Kanälen (M.K., FLT4/8, xCHN, xxCH)
@@ -171,6 +172,39 @@ liegt. In der Framebuffer-Edition steckt das in `src/vis_voxel.rs` (die Karte re
 SIMD-Kern in den Workern), in der klassischen Edition in `www/voxel.js` (eigener Worker-Pool mit
 dem SIMD-Kern, gerendert in reduzierter Auflösung).
 
+## See-Ansicht
+
+Die sechste Ansicht zeigt einen See aus Voxeln, den die Musik zum Schwingen bringt:
+
+- Die Wasseroberfläche ist eine zweidimensionale, leicht gedämpfte Wellengleichung auf einem
+  Gitter (240 × 240 Zellen, 120 Schritte pro Sekunde). Wellenberge und -täler addieren und
+  löschen sich deshalb wie bei echten Wellen, und am Ufer werden sie zurückgeworfen.
+- Jeder Einsatz des tiefsten Basses (etwa 30 bis 75 Hz, der Pegel springt über seinen
+  gleitenden Mittelwert) wirft einen „Stein“ ins Wasser, je stärker der Sprung, desto tiefer
+  die Delle. Schläge ohne Bass-Einsatz werfen einen kleineren. Von dort läuft eine konzentrische
+  Welle los.
+- Die Stelle, an der die Steine fallen, wandert langsam im Kreis um die Mitte des Sees.
+- Das Ufer ist unregelmäßig geformt (ein Kreis, verformt durch einige Oberschwingungen mit
+  festen Phasen), und in der Nähe der Mitte liegt eine kleine Insel. An beiden werden die Wellen
+  zurückgeworfen.
+- Das Wasser ist türkis, auf den Wellenbergen heller und mit Schaum auf hohen Kämmen, und wird
+  nach seiner Neigung beleuchtet. Das Ufer steigt zu Hügeln an: Sand, Gras, weiter oben Fels.
+- Die Kamera fliegt langsam: etwa eine Minute für eine Runde um den See, in etwa anderthalb
+  Minuten einmal weg und wieder heran, in etwa einer Minute einmal hoch und wieder herab. Der
+  Blick folgt dabei so, dass der See im Bild bleibt.
+
+**Auflösung:** In beiden Voxel-Ansichten schaltet der Knopf **Grob/Fein** (Taste R, in der
+klassischen Edition „Auflösung“) zwischen den kantigen Voxeln und einer glatten Oberfläche um.
+Fein interpoliert Höhen und Farben bilinear zwischen den Zellen und tastet die Strahlen enger ab.
+Beim See entscheidet der feine Modus außerdem pro Bildpunkt anhand des interpolierten Abstands zur
+Uferlinie, ob Wasser, Strand oder Wiese zu sehen ist; das Ufer wird so zur glatten Kurve statt
+der Treppe der Gitterzellen;
+die klassische Edition rechnet dann außerdem in voller Bildschirmauflösung statt in reduzierter.
+Das kostet etwa die doppelte bis dreifache Rechenzeit.
+
+Beide Voxel-Ansichten nutzen denselben Renderer: `src/voxel_space.rs` in der
+Framebuffer-Edition, `VoxelSpace` in `www/voxel.js` in der klassischen.
+
 ## Continuous Integration
 
 `.github/workflows/ci.yml` läuft bei jedem Push und Pull Request:
@@ -199,7 +233,7 @@ node tests/vis_smoke.mjs www-fb/modplayer.wasm www/drozerix_-_neon_techno.mod ww
 ## Framebuffer-Edition (`www-fb/`)
 
 Eine zweite Oberfläche, bei der **jedes Pixel in Rust gezeichnet wird**: Knöpfe, Schrift,
-Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel, Voxel-Landschaft und Pattern-Ansicht. Rust rendert in einen
+Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel, Voxel-Landschaft, See und Pattern-Ansicht. Rust rendert in einen
 RGBA-Framebuffer im WASM-Speicher, JavaScript legt ihn per `putImageData` auf ein Canvas.
 Das JavaScript (gut 100 Zeilen samt dem kleinen Worker für den Mandelbrot-Kern) macht nur noch Folgendes:
 
@@ -216,12 +250,14 @@ Das JavaScript (gut 100 Zeilen samt dem kleinen Worker für den Mandelbrot-Kern)
 | `src/vis_spec.rs` | Spektrum 2D mit Spektrogramm und 3D-Verlauf mit Floating Horizon |
 | `src/vis_cube.rs` | Würfel mit sechs Live-Flächen, perspektivisch korrekte Texturen |
 | `src/vis_voxel.rs` | Voxel-Landschaft aus dem Mandelbrot-Zoom mit Kameraflug |
+| `src/vis_lake.rs` | See aus Voxeln: Wellengleichung, angeregt von Bass und Takt |
+| `src/voxel_space.rs` | wiederverwendbarer Voxel-Space-Renderer für Höhenkarten (Kamera-Orbit, Strahlen pro Spalte, Dunst) |
 | `src/vis_ui.rs` | Knopfleiste, Eingabe, Seitenleiste mit Order-Liste und Pattern |
 | `src/gfx.rs` | Framebuffer-Primitive: Rechtecke, Linien mit Glow, Text |
 | `src/font.rs` | eigener 5×7-Bitmap-Font (erzeugt von `tools/make_font.py`) |
 | `src/bin/fbshot.rs` | rendert Frames nativ als PPM-Bilder, zum Testen ohne Browser |
 
-Tasten: Leertaste Play/Pause, S Stop, O Datei, V Ansicht, 3 Spektrum 2D/3D, P Farben, L Loop, F Vollbild.
+Tasten: Leertaste Play/Pause, S Stop, O Datei, V Ansicht, 3 Spektrum 2D/3D, P Farben, R Voxel grob/fein, L Loop, F Vollbild.
 
 Wie alles andere bleibt auch der Renderer im Sprachkern-Subset und baut deshalb auch über
 `preview/minicore.rs`. `tests/vis_smoke.mjs` prüft ihn in Node (alle Ansichten, Knöpfe, Zeit pro Frame).

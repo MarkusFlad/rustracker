@@ -89,6 +89,10 @@ impl Vis {
             self.action_arg = if self.looping { 1 } else { 0 };
             return ACT_LOOP;
         }
+        if id == B_RES {
+            self.vx_fine = !self.vx_fine;
+            return ACT_NONE;
+        }
         if id == B_FULL {
             self.fullscreen = !self.fullscreen;
             self.action_arg = if self.fullscreen { 1 } else { 0 };
@@ -97,8 +101,8 @@ impl Vis {
         ACT_NONE
     }
 
-    /// A key press: space play/pause, s stop, o open, v view, 3 2D/3D, p palette, l loop, f
-    /// fullscreen (upper or lower case).
+    /// A key press: space play/pause, s stop, o open, v view, 3 2D/3D, p palette, l loop,
+    /// f fullscreen, r voxel resolution (upper or lower case).
     ///
     /// # Arguments
     /// * `code` - character code of the key
@@ -130,6 +134,9 @@ impl Vis {
         }
         if code == 70 || code == 102 {
             return self.button(B_FULL);
+        }
+        if code == 82 || code == 114 {
+            return self.button(B_RES);
         }
         ACT_NONE
     }
@@ -218,6 +225,14 @@ impl Vis {
         if self.view == V_MANDEL || self.view == V_CUBE || self.view == V_VOXEL {
             x = self.add_button(s, x, self.bar_y, h, b"FARBEN", B_PAL, false);
         }
+        if self.view == V_VOXEL || self.view == V_LAKE {
+            let on = self.vx_fine;
+            x = if on {
+                self.add_button(s, x, self.bar_y, h, b"FEIN", B_RES, true)
+            } else {
+                self.add_button(s, x, self.bar_y, h, b"GROB", B_RES, false)
+            };
+        }
         let on = self.looping;
         x = self.add_button(s, x, self.bar_y, h, b"LOOP", B_LOOP, on);
         let on = self.fullscreen;
@@ -240,6 +255,8 @@ impl Vis {
                 self.add_button(s, x, y, h, b"SPEKTR", B_VIEW, false)
             } else if v == V_VOXEL {
                 self.add_button(s, x, y, h, b"VOXEL", B_VIEW, false)
+            } else if v == V_LAKE {
+                self.add_button(s, x, y, h, b"SEE", B_VIEW, false)
             } else {
                 self.add_button(s, x, y, h, b"W\xc8RFEL", B_VIEW, false)
             }
@@ -251,6 +268,8 @@ impl Vis {
             self.add_button(s, x, y, h, b"ANSICHT: SPEKTRUM", B_VIEW, false)
         } else if v == V_VOXEL {
             self.add_button(s, x, y, h, b"ANSICHT: VOXEL", B_VIEW, false)
+        } else if v == V_LAKE {
+            self.add_button(s, x, y, h, b"ANSICHT: SEE", B_VIEW, false)
         } else {
             self.add_button(s, x, y, h, b"ANSICHT: W\xc8RFEL", B_VIEW, false)
         }

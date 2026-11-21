@@ -127,8 +127,12 @@ pub mod font;
 pub mod gfx;
 #[path = "../src/vis.rs"]
 pub mod vis;
+#[path = "../src/voxel_space.rs"]
+pub mod voxel_space;
 #[path = "../src/vis_cube.rs"]
 mod vis_cube;
+#[path = "../src/vis_lake.rs"]
+mod vis_lake;
 #[path = "../src/vis_mandel.rs"]
 mod vis_mandel;
 #[path = "../src/vis_osc.rs"]

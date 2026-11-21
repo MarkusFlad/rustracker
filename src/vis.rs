@@ -66,14 +66,16 @@ pub(crate) const B_3D: u32 = 5;
 pub(crate) const B_PAL: u32 = 6;
 pub(crate) const B_LOOP: u32 = 7;
 pub(crate) const B_FULL: u32 = 8;
+pub(crate) const B_RES: u32 = 9;
 
 pub(crate) const V_OSC: u32 = 0;
 pub(crate) const V_MANDEL: u32 = 1;
 pub(crate) const V_SPEC: u32 = 2;
 pub(crate) const V_CUBE: u32 = 3;
 pub(crate) const V_VOXEL: u32 = 4;
+pub(crate) const V_LAKE: u32 = 5;
 /// Number of views.
-pub(crate) const N_VIEWS: u32 = 5;
+pub(crate) const N_VIEWS: u32 = 6;
 
 /// What the worklet reported with one slot: when it is heard and where the replayer was.
 pub(crate) struct Msg {
@@ -257,6 +259,31 @@ pub struct Vis {
     pub(crate) vx_cdf: [u32; crate::vis_voxel::HIST_BINS],
     pub(crate) vx_h: [u16; MB_MAX],
     pub(crate) vx_l: [u8; MB_MAX],
+    pub(crate) vx_c: [u32; MB_MAX],
+    /// Voxel views: smooth surface instead of blocky voxels.
+    pub(crate) vx_fine: bool,
+    // lake view: wave buffers, mask, height map and colours
+    pub(crate) lk_a: [f32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_b: [f32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_flip: bool,
+    pub(crate) lk_mask: [u8; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_h: [u16; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_c: [u32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_ready: bool,
+    pub(crate) lk_acc: f64,
+    pub(crate) lk_bass_avg: f64,
+    pub(crate) lk_bass: f64,
+    pub(crate) lk_hit_t: f64,
+    pub(crate) lk_slot_t: f64,
+    pub(crate) lk_rowkey: u32,
+    pub(crate) lk_drops: u32,
+    // fine mode: smooth shoreline layers
+    pub(crate) lk_edge: [f32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_lh: [u16; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_lc: [u32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_sc: [u32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_wh: [u16; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    pub(crate) lk_wc: [u32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
 }
 
 impl Vis {
@@ -357,6 +384,28 @@ impl Vis {
             vx_cdf: [0; crate::vis_voxel::HIST_BINS],
             vx_h: [0; MB_MAX],
             vx_l: [0; MB_MAX],
+            vx_c: [0; MB_MAX],
+            vx_fine: false,
+            lk_a: [0.0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_b: [0.0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_flip: false,
+            lk_mask: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_h: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_c: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_ready: false,
+            lk_acc: 0.0,
+            lk_bass_avg: 0.0,
+            lk_bass: 0.0,
+            lk_hit_t: 0.0,
+            lk_slot_t: 0.0,
+            lk_rowkey: 0,
+            lk_drops: 0,
+            lk_edge: [0.0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_lh: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_lc: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_sc: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_wh: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_wc: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
         }
     }
 
@@ -722,9 +771,11 @@ impl Vis {
         } else if self.view == V_CUBE {
             self.direct(now, dt, cur, pl);
             self.draw_cube(v, now, dt, cur, pl);
-        } else {
+        } else if self.view == V_VOXEL {
             self.direct(now, dt, cur, pl);
             self.draw_voxel(v, now, dt);
+        } else {
+            self.draw_lake(v, now, dt, cur);
         }
     }
 }

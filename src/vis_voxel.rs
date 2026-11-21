@@ -2,52 +2,39 @@
 //!
 //! Every finished Mandelbrot buffer becomes a height map: points of the set lie at height
 //! zero, the fewer iterations a point needs to escape, the higher it is (histogram-equalised
-//! over the picture, so the heights spread evenly and the outer regions rise to peaks). Each voxel keeps the colour of the 2D picture, lit by its
-//! slope. A camera orbits the landscape and looks past its centre, so it flies around the
-//! peaks; the zoom of the director makes the landscape grow.
-//!
-//! Rendering is the classic voxel-space algorithm: one ray per screen column, marched front
-//! to back over the height map, each sample drawn as a vertical span above everything nearer.
+//! over the picture, so the heights spread evenly and the outer regions rise to peaks). Each
+//! voxel keeps the colour of the 2D picture, lit by its slope. A camera orbits the landscape
+//! and looks past its centre, so it flies around the peaks; the zoom of the director makes
+//! the landscape grow. Rendering: [`crate::voxel_space`].
 
 use crate::gfx::*;
 use crate::math::*;
 use crate::vis::*;
 use crate::vis_cube::draw_vertical_gradient;
+use crate::voxel_space::{render, HeightMap, Orbit, FOG, HSCALE, NO_SHORE};
 
 /// Half the width of the landscape in world units (the director's picture spans ±1; the
 /// buffer has some margin, which the zoom makes grow).
 const EXTENT: f64 = 1.6;
-/// World height of the highest voxels.
-const HMAX: f64 = 0.55;
-/// Height map resolution: stored heights run from 0 to this value.
-const HSCALE: f64 = 1000.0;
-/// Farthest distance a ray travels.
-const ZMAX: f64 = 2.6;
 /// Bins of the iteration histogram: one per iteration (the palette index has 16 steps
 /// per iteration); more iterations share the last bin.
 pub(crate) const HIST_BINS: usize = 4096;
-/// Sky colour at the horizon; distant voxels fade into it.
-const FOG: u32 = rgb(16, 34, 27);
-
-/// Camera of one frame: position, viewing direction and projection.
-struct Camera {
-    x: f64,
-    y: f64,
-    z: f64,
-    fx: f64,
-    fy: f64,
-    rx: f64,
-    ry: f64,
-    focal: f64,
-    horizon: f64,
-}
-
-/// Maps world coordinates onto the front buffer of the Mandelbrot renderer.
-struct MapXform {
-    x0: f64,
-    y0: f64,
-    k: f64,
-}
+/// The camera orbits the centre once a minute over the landscape, breathing in and out a
+/// little, and looks past the centre (to the left of it), so it circles around the peaks.
+const ORBIT: Orbit = Orbit {
+    speed: 0.105,
+    radius: 0.85,
+    breathe: 0.15,
+    breathe_rate: 0.23,
+    height: 0.85,
+    rise: 0.06,
+    rise_rate: 0.17,
+    rise_phase: 0.0,
+    look: 0.55,
+    horizon: 0.24,
+    aim: 0.0,
+    aim_height: 0.0,
+};
 
 impl Vis {
     /// The voxel view: keeps the square Mandelbrot buffer coming (like the cube face),
@@ -63,15 +50,11 @@ impl Vis {
         if self.mb_done != self.vx_seen || !self.vx_ready {
             self.build_heights();
         }
-        let cam = self.camera(s, now);
-        let map = self.map_xform();
-        let shift = (self.d_shift_shown as i64 % PAL_LEN as i64) as u32;
+        self.build_colours();
+        let cam = ORBIT.camera((now - self.t0) / 1000.0, 0.04 * self.pulse, s.h);
+        let map = self.voxel_map();
         let flash = (clampf(self.d_flash, 0.0, 0.6) * 256.0) as u32;
-        let mut col = 0;
-        while col < s.w {
-            self.voxel_column(s, &cam, &map, col, shift, flash);
-            col += 1;
-        }
+        unsafe { render(s, &cam, &map, flash, self.vx_fine) };
         self.draw_mandel_hud(s);
     }
 
@@ -154,110 +137,39 @@ impl Vis {
         self.vx_h[(y * self.f_w + x) as usize] as f64
     }
 
-    /// The camera orbits the centre once a minute over the landscape, breathing in and out
-    /// a little, and looks past the centre (to the left of it) so that it circles around
-    /// the peaks.
-    /// Beats push it down slightly.
-    fn camera(&self, s: &Surface, now: f64) -> Camera {
-        let t = (now - self.t0) / 1000.0;
-        let ang = t * 0.105;
-        let r = 0.85 + 0.15 * sin(t * 0.23);
-        let yaw = ang + PI + 0.55;
-        let (fx, fy) = (cos(yaw), sin(yaw));
-        Camera {
-            x: r * cos(ang),
-            y: r * sin(ang),
-            z: 0.85 + 0.06 * sin(t * 0.17) - 0.04 * self.pulse,
-            fx,
-            fy,
-            rx: fy,
-            ry: 0.0 - fx,
-            focal: s.h as f64 * 0.85,
-            horizon: s.h as f64 * 0.24,
+    /// Lit colour of every voxel for this frame: the 2D palette colour with the current
+    /// palette shift (black inside the set), dimmed by the slope light.
+    fn build_colours(&mut self) {
+        let front = self.mb_front * MB_MAX;
+        let shift = (self.d_shift_shown as i64 % PAL_LEN as i64) as u32;
+        let n = (self.f_w * self.f_h) as usize;
+        let mut i = 0;
+        while i < n {
+            let v = self.mb[front + i];
+            let base = if v == 0xffff_ffff {
+                BLACK
+            } else {
+                self.pal[((v + shift) % PAL_LEN as u32) as usize]
+            };
+            self.vx_c[i] = dim(base, self.vx_l[i] as u32 + 1);
+            i += 1;
         }
     }
 
-    /// World (±1 = the current view of the director) to front-buffer pixels. Using the
-    /// current view instead of the buffer's own makes the zoom continuous.
-    fn map_xform(&self) -> MapXform {
+    /// The landscape: world ±1 is the current view of the director, mapped onto the front
+    /// buffer. Using the current view instead of the buffer's own makes the zoom continuous.
+    fn voxel_map(&self) -> HeightMap {
         let half = self.v_size * 0.5;
-        MapXform {
+        HeightMap {
+            heights: (&raw const self.vx_h) as *const u16,
+            colours: (&raw const self.vx_c) as *const u32,
+            w: self.f_w,
+            h: self.f_h,
             x0: (self.v_cx - self.f_re0) / self.f_step,
             y0: (self.f_im0 - self.v_cy) / self.f_step,
             k: half / self.f_step,
-        }
-    }
-
-    /// Marches the ray of screen column `col` from near to far and draws every voxel that
-    /// rises above what is already drawn in this column.
-    fn voxel_column(
-        &self,
-        s: &Surface,
-        cam: &Camera,
-        map: &MapXform,
-        col: i32,
-        shift: u32,
-        flash: u32,
-    ) {
-        let off = (col as f64 - s.w as f64 / 2.0 + 0.5) / cam.focal;
-        let dx = cam.fx + cam.rx * off;
-        let dy = cam.fy + cam.ry * off;
-        let front = self.mb_front * MB_MAX;
-        let mut ybuf = s.h;
-        let mut z = 0.06;
-        while z < ZMAX && ybuf > 0 {
-            let wx = cam.x + dx * z;
-            let wy = cam.y + dy * z;
-            let idx = self.map_index(map, wx, wy);
-            if idx >= 0 {
-                let i = idx as usize;
-                let hh = self.vx_h[i] as f64 * (HMAX / HSCALE);
-                let sy = (cam.horizon + (cam.z - hh) * cam.focal / z) as i32;
-                if sy < ybuf {
-                    let c = self.voxel_color(front + i, i, z, shift, flash);
-                    fill_span(s, col, imax(sy, 0), ybuf, c);
-                    ybuf = sy;
-                }
-            }
-            z += z * 0.011 + 0.0015;
-        }
-    }
-
-    /// Buffer index of world point (wx, wy), or -1 outside the landscape or the buffer.
-    #[inline(always)]
-    fn map_index(&self, map: &MapXform, wx: f64, wy: f64) -> i32 {
-        if wx < 0.0 - EXTENT || wx > EXTENT || wy < 0.0 - EXTENT || wy > EXTENT {
-            return -1;
-        }
-        let bx = map.x0 + wx * map.k;
-        let by = map.y0 - wy * map.k;
-        if bx < 0.0 || by < 0.0 {
-            return -1;
-        }
-        let (x, y) = (bx as i32, by as i32);
-        if x >= self.f_w || y >= self.f_h {
-            return -1;
-        }
-        y * self.f_w + x
-    }
-
-    /// Colour of a voxel: the 2D palette colour (black inside the set), lit, faded into
-    /// the fog with distance `z` and brightened by the beat flash.
-    #[inline(always)]
-    fn voxel_color(&self, mb_i: usize, i: usize, z: f64, shift: u32, flash: u32) -> u32 {
-        let v = self.mb[mb_i];
-        let base = if v == 0xffff_ffff {
-            BLACK
-        } else {
-            self.pal[((v + shift) % PAL_LEN as u32) as usize]
-        };
-        let lit = dim(base, self.vx_l[i] as u32 + 1);
-        let fog = z / ZMAX;
-        let c = mix(lit, FOG, (fog * fog * 230.0) as u32);
-        if flash > 0 {
-            mix(c, WHITE, flash)
-        } else {
-            c
+            extent: EXTENT,
+            shore: NO_SHORE,
         }
     }
 }
@@ -270,18 +182,5 @@ fn hist_bin(v: u32) -> usize {
         b
     } else {
         HIST_BINS - 1
-    }
-}
-
-/// Fills column `x` from row `y0` up to (not including) `y1`.
-#[inline(always)]
-fn fill_span(s: &Surface, x: i32, y0: i32, y1: i32, c: u32) {
-    let mut p = s.p as usize + ((y0 * s.stride + x) as usize) * 4;
-    let step = s.stride as usize * 4;
-    let mut y = y0;
-    while y < y1 {
-        unsafe { *(p as *mut u32) = c };
-        p += step;
-        y += 1;
     }
 }
