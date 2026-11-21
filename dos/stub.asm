@@ -413,11 +413,13 @@ copy_up:                        ; [lf_n] bytes of iobuf to [lf_dst] (rounded up 
     jc fail_free
     ret
 
-set_base:                       ; descriptor at bx gets base eax
+set_base:                       ; descriptor at bx gets base eax (eax is preserved)
+    push eax
     mov [bx+2], ax
     shr eax, 16
     mov [bx+4], al
     mov [bx+7], ah
+    pop eax
     ret
 
 ; ---- directory of RTRACK.COM (from the environment) -> binpath, default modpath
