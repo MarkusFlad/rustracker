@@ -1,0 +1,11 @@
+# Scenes of the promo video (see src/bin/promo.rs). CARDS/ is replaced by the card directory.
+# start end view caption [last]   (one pattern = 7.68 s)
+0.00  7.68  0   CARDS/title.png
+7.68  11.52 2   CARDS/c1.png
+11.52 15.36 3d  CARDS/c2.png
+15.36 23.04 1   CARDS/c3.png
+23.04 30.72 3   CARDS/c4.png
+30.72 38.40 4   CARDS/c5.png
+38.40 46.08 5   CARDS/c6.png
+46.08 53.76 ui:1 CARDS/c7.png
+53.76 61.44 4   CARDS/end.png  last

@@ -10,6 +10,9 @@ kompiliert und spielt im Browser über ein AudioWorklet ab. Dazu gibt es ein Osz
 
 - [▶ Klassische Edition](https://markusflad.github.io/rustracker/): Oberfläche in HTML/Canvas, Mandelbrot auf der GPU (WebGL2) oder mit dem Rust-SIMD-Kern
 - [▶ Framebuffer-Edition](https://markusflad.github.io/rustracker/fb/): jedes Pixel von Rust gezeichnet, nur ein paar Zeilen JavaScript
+- [▶ Promo-Video](https://markusflad.github.io/rustracker/video/): eine Minute Rustracker, gerendert vom Rustracker selbst
+
+[![Promo-Video](https://markusflad.github.io/rustracker/video/rustracker_thumbnail.jpg)](https://markusflad.github.io/rustracker/video/)
 
 ## Ansichten
 
@@ -225,7 +228,8 @@ Algorithmus nur einmal, und er läuft überall als kompiliertes WebAssembly.
 | **Rust** | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc` (jedes öffentliche Element dokumentiert, keine kaputten Links), `cargo test`, natives Rendern der drei Songs |
 | **WebAssembly** | Build mit `cargo` für `wasm32-unknown-unknown` **und** über `preview/minicore.rs`. Der zweite Build stellt sicher, dass die Bibliothek weiterhin nur den Sprachkern nutzt. Dazu kommt der Mandelbrot-SIMD-Kern (`mandel.wasm`). Danach laufen in Node `tests/wasm_smoke.mjs` (Exporte, Laden, Klang, FFT, Vergleich mit dem nativen Rendern auf ±2 LSB) und `tests/vis_smoke.mjs` (Framebuffer-Renderer, mit und ohne SIMD-Kern). Zum Schluss werden die Skripte beider Seiten geprüft und die Website als Artefakt `site` gebaut. |
 | **Songs** | Erzeugt die beiden eigenen Songs neu aus `songs/*.py` und prüft, dass der Rust-Player sie abspielt |
-| **Pages** | Nur bei Push auf den Standard-Branch (`main` oder `master`): veröffentlicht beide Editionen mit „Neon Techno“ auf GitHub Pages (klassisch unter `/`, Framebuffer unter `/fb/`) |
+| **Video** | Nicht bei Pull Requests: rendert das Promo-Video mit `tools/promo/make_video.sh` (siehe unten) und stellt es als Artefakt `video` bereit |
+| **Pages** | Nur bei Push auf den Standard-Branch (`main` oder `master`): veröffentlicht beide Editionen mit „Neon Techno“ auf GitHub Pages (klassisch unter `/`, Framebuffer unter `/fb/`) und das Promo-Video unter `/video/` |
 
 Für GitHub Pages musst du einmalig unter *Settings → Pages → Source* „GitHub Actions“ wählen.
 Danach öffnet [https://markusflad.github.io/rustracker/](https://markusflad.github.io/rustracker/) direkt den Tracker und [https://markusflad.github.io/rustracker/fb/](https://markusflad.github.io/rustracker/fb/) die Framebuffer-Edition; die WASM-Dateien dafür baut die CI bei jedem Push neu.
@@ -240,6 +244,22 @@ cargo run --release --bin mod2wav -- www/drozerix_-_neon_techno.mod /tmp/native.
 node tests/wasm_smoke.mjs www/modplayer.wasm www/drozerix_-_neon_techno.mod /tmp/native.wav
 node tests/vis_smoke.mjs www-fb/modplayer.wasm www/drozerix_-_neon_techno.mod www-fb/mandel.wasm
 ```
+
+## Promo-Video
+
+Das Video unter [markusflad.github.io/rustracker/video](https://markusflad.github.io/rustracker/video/)
+ist keine Bildschirmaufnahme: `src/bin/promo.rs` spielt den Song nativ ab, füttert den Renderer
+genau wie das AudioWorklet im Browser und schreibt jedes Bild direkt in ffmpeg. Die Szenen
+(Zeiten, Ansichten, Einblendungen) stehen in `tools/promo/scenes.txt`, die Texttafeln und das
+Vorschaubild zeichnet `tools/promo/cards.py`. Geschnitten wird auf Pattern-Grenzen, Bild und Ton
+laufen auf demselben 30-fps-Raster und passen exakt zusammen. Die CI rendert das Video bei jedem
+Push neu (Job **Video**, gut zwei Minuten); lokal:
+
+```sh
+tools/promo/make_video.sh            # → target/promo/rustracker_promo.mp4 und ..._thumbnail.jpg
+```
+
+Voraussetzungen: cargo, ffmpeg, Python 3 mit Pillow und die DejaVu-Schriften.
 
 ## Framebuffer-Edition (`www-fb/`)
 
@@ -268,6 +288,7 @@ Das JavaScript (`www-fb/index.html` und die mit der klassischen Edition geteilte
 | `src/gfx.rs` | Framebuffer-Primitive: Rechtecke, Linien mit Glow, Text |
 | `src/font.rs` | eigener 5×7-Bitmap-Font (erzeugt von `tools/make_font.py`) |
 | `src/bin/fbshot.rs` | rendert Frames nativ als PPM-Bilder, zum Testen ohne Browser |
+| `src/bin/promo.rs` | rendert die Bilder des Promo-Videos nativ und gibt sie an ffmpeg (`tools/promo/`) |
 
 Tasten: Leertaste Play/Pause, S Stop, O Datei, V Ansicht, 3 Spektrum 2D/3D, P Farben, R Voxel grob/fein, L Loop, F Vollbild.
 
