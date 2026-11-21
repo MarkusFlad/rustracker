@@ -317,6 +317,33 @@ pub extern "C" fn vis_frame(now: f64, w: i32, h: i32, css: f64) -> *const u32 {
     vis().frame(now, w, h, css, p)
 }
 
+/// Draws a single view filling the whole frame, without bar and panel (see
+/// [`Vis::view_frame`]).
+///
+/// # Arguments
+/// * `view` - 0 oscilloscope, 1 Mandelbrot, 2 spectrum, 3 cube, 4 voxel landscape, 5 lake
+/// * `now` - time in ms (performance.now())
+/// * `w` - wanted width in pixels
+/// * `h` - wanted height; clamped to the buffer, see [`vis_width`]/[`vis_height`]
+/// * `css` - framebuffer pixels per CSS pixel
+///
+/// # Returns
+/// Pointer to the RGBA pixels, `vis_width()`·`vis_height()` u32.
+#[no_mangle]
+pub extern "C" fn vis_view(view: u32, now: f64, w: i32, h: i32, css: f64) -> *const u32 {
+    let p = unsafe { &*(&raw const PLAYER) };
+    vis().view_frame(view, now, w, h, css, p)
+}
+
+/// Smooth surface or blocky voxels in the voxel views.
+///
+/// # Arguments
+/// * `on` - 1 smooth (the default), 0 blocky
+#[no_mangle]
+pub extern "C" fn vis_set_fine(on: i32) {
+    vis().set_fine(on != 0)
+}
+
 /// Width of the last frame.
 ///
 /// # Returns

@@ -97,8 +97,7 @@ cargo doc --no-deps --open
 | `www/worklet.js` | AudioWorklet: ruft `mp_render` auf und schickt Scope-Daten an die Oberfläche |
 | `www/index.html` | Oberfläche, Oszilloskop (Canvas mit Phosphor-Nachleuchten), Pattern-Ansicht, Musik-Regie für den Mandelbrot-Zoom |
 | `www/mandel.js` | Mandelbrot-Engine aus dem Echtzeit-Zoomer: GPU (WebGL2, fp32/df64) und der Rust-SIMD-Kern in Web Workern |
-| `www/voxel.js` | Voxel-Landschaft aus dem Mandelbrot-Zoom (Höhenkarte vom SIMD-Kern) und der gemeinsame Voxel-Space-Renderer |
-| `www/lake.js` | See aus Voxeln: Wellengleichung, angeregt von Bass und Takt |
+| `www/rustvis.js` | Anbindung des Rust-Renderers (`src/vis.rs`) an eine Seite: eigene WASM-Instanz, Worklet-Daten, Worker für den Mandelbrot-Kern; genutzt von der Framebuffer-Edition und von den Voxel-Ansichten der klassischen |
 | `kernel/mandel_wasm.rs` | der SIMD-Kern des Zoomers (f64x2, 8 Pixel verschränkt), gebaut zu `mandel.wasm`; liefert Farben oder Palettenindizes |
 
 Unterstützt werden 15/31-Sample-MODs mit 4 bis 32 Kanälen (M.K., FLT4/8, xCHN, xxCH)
@@ -180,9 +179,8 @@ dasselbe Bild der Musik-Regie, als quadratische Karte der Iterationszahlen:
 
 Gezeichnet wird mit dem klassischen Voxel-Space-Verfahren: ein Strahl pro Bildspalte, von vorn
 nach hinten über die Höhenkarte, jede Stelle als senkrechter Streifen über dem, was schon näher
-liegt. In der Framebuffer-Edition steckt das in `src/vis_voxel.rs` (die Karte rechnet der
-SIMD-Kern in den Workern), in der klassischen Edition in `www/voxel.js` (eigener Worker-Pool mit
-dem SIMD-Kern, gerendert in reduzierter Auflösung).
+liegt. Der Code steckt in `src/vis_voxel.rs` und `src/voxel_space.rs`; die Karte rechnet der
+SIMD-Kern in den Workern. Beide Editionen nutzen dafür denselben Rust-Renderer (siehe unten).
 
 ## See-Ansicht
 
@@ -210,12 +208,13 @@ klassischen Edition „Auflösung“) zwischen einer glatten Oberfläche (Standa
 Fein interpoliert Höhen und Farben bilinear zwischen den Zellen und tastet die Strahlen enger ab.
 Beim See entscheidet der feine Modus außerdem pro Bildpunkt anhand des interpolierten Abstands zur
 Uferlinie, ob Wasser, Strand oder Wiese zu sehen ist; das Ufer wird so zur glatten Kurve statt
-der Treppe der Gitterzellen;
-die klassische Edition rechnet dann außerdem in voller Bildschirmauflösung statt in reduzierter.
-Das kostet etwa die doppelte bis dreifache Rechenzeit.
+der Treppe der Gitterzellen. Das kostet etwa die doppelte bis dreifache Rechenzeit.
 
-Beide Voxel-Ansichten nutzen denselben Renderer: `src/voxel_space.rs` in der
-Framebuffer-Edition, `VoxelSpace` in `www/voxel.js` in der klassischen.
+Beide Voxel-Ansichten nutzen den Renderer `src/voxel_space.rs`, und zwar in beiden Editionen:
+Die klassische Edition startet dafür eine eigene Instanz von `modplayer.wasm` im Haupt-Thread,
+gibt ihr Song und Worklet-Daten und lässt sie mit `vis_view` nur die jeweilige Ansicht zeichnen
+(Anbindung in `www/rustvis.js`, die auch die Framebuffer-Edition nutzt). So gibt es den
+Algorithmus nur einmal, und er läuft überall als kompiliertes WebAssembly.
 
 ## Continuous Integration
 
@@ -247,7 +246,8 @@ node tests/vis_smoke.mjs www-fb/modplayer.wasm www/drozerix_-_neon_techno.mod ww
 Eine zweite Oberfläche, bei der **jedes Pixel in Rust gezeichnet wird**: Knöpfe, Schrift,
 Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel, Voxel-Landschaft, See und Pattern-Ansicht. Rust rendert in einen
 RGBA-Framebuffer im WASM-Speicher, JavaScript legt ihn per `putImageData` auf ein Canvas.
-Das JavaScript (gut 100 Zeilen samt dem kleinen Worker für den Mandelbrot-Kern) macht nur noch Folgendes:
+Das JavaScript (`www-fb/index.html` und die mit der klassischen Edition geteilte Anbindung
+`www/rustvis.js`, die `build.sh` und die CI nach `www-fb/` kopieren) macht nur noch Folgendes:
 
 - WASM laden, AudioWorklet starten und dessen Daten in einen Puffer des Renderers kopieren
 - jedes Bild `vis_frame()` aufrufen und den Framebuffer anzeigen

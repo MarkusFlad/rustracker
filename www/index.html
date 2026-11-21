@@ -27,9 +27,8 @@
   .box { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
   .box h2 { margin: 0; padding: 6px 10px; font-size: 11px; color: var(--muted); font-weight: normal;
     letter-spacing: .12em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
-  #scope, #mandel, #spec, #voxel, #lake { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; background: #020403; }
-  #mandel, #spec, #voxel, #lake { display: none; background: #000; touch-action: manipulation; }
-  #voxel, #lake { image-rendering: pixelated; }
+  #scope, #mandel, #spec, #rustview { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; background: #020403; }
+  #mandel, #spec, #rustview { display: none; background: #000; touch-action: manipulation; }
   #cubeScene { display: none; position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden;
     background: radial-gradient(ellipse at center, #0b1712 0%, #020403 70%); perspective: 1100px; }
   #cube { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; }
@@ -44,7 +43,7 @@
     background: rgba(0,0,0,.45); padding: 3px 7px; border-radius: 3px; text-align: right; line-height: 1.35; }
   .box.fs { position: fixed; inset: 0; z-index: 50; border: 0; border-radius: 0; background: #000; }
   .box.fs h2 { display: none; }
-  .box.fs .viewbox, .box.fs #mandel, .box.fs #spec, .box.fs #voxel, .box.fs #lake { width: 100%; height: 100%; aspect-ratio: auto; }
+  .box.fs .viewbox, .box.fs #mandel, .box.fs #spec, .box.fs #rustview { width: 100%; height: 100%; aspect-ratio: auto; }
   .box.fs .viewbox { height: 100vh; }
   #status { padding: 8px 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px 12px; }
   #status b { color: var(--ph); font-weight: normal; }
@@ -82,8 +81,7 @@
         <canvas id="scope"></canvas>
         <canvas id="mandel"></canvas>
         <canvas id="spec"></canvas>
-        <canvas id="voxel"></canvas>
-        <canvas id="lake"></canvas>
+        <canvas id="rustview"></canvas>
         <div id="cubeScene"><div id="cube">
           <canvas class="face" data-face="scope"></canvas><canvas class="face" data-face="xy"></canvas>
           <canvas class="face" data-face="spec2"></canvas><canvas class="face" data-face="spec3"></canvas>
@@ -122,8 +120,7 @@
 
 <script src="song.js"></script>
 <script src="mandel.js"></script>
-<script src="voxel.js"></script>
-<script src="lake.js"></script>
+<script src="rustvis.js"></script>
 <script>
 'use strict';
 const $ = (id) => document.getElementById(id);
@@ -238,6 +235,7 @@ function setSong(bytes, name) {
   renderSamples(); renderOrders(); renderPattern(0, 0);
   $('msg').textContent = `${song.title} · ${song.channels} Kanäle · ${song.order.length} Positionen`;
   if (node) node.pendingSong = true;
+  if (rust) rust.load(modBytes);
 }
 
 /** Play/pause toggle. */
@@ -260,6 +258,7 @@ function stop() {
   node.port.postMessage({ type: 'seek', order: 0 });
   last = null; timeline.length = 0; dir.order = -1; dir.z = 0; renderPattern(song.order[0], 0); renderOrders(0);
   updateButtons();
+  if (rust) rust.vi.vis_event(2);
 }
 
 /** Play button label. */
@@ -279,6 +278,7 @@ function onWorkletMessage(e) {
     const lat = ctx ? ((ctx.outputLatency || 0) + (ctx.baseLatency || 0)) * 1000 : 0;
     m.t = performance.now() + lat;
     m.seq = ++msgSeq;
+    if (rust) rust.push(m, m.t);
     timeline.push(m);
     if (timeline.length > 64) timeline.shift();
     dir.peak = Math.max(m.rms, dir.peak * 0.9995, 0.02);
@@ -427,8 +427,7 @@ function draw() {
   if (viewMode === 'mandel') drawMandel();
   else if (viewMode === 'spectrum') drawSpectrum();
   else if (viewMode === 'cube') drawCube();
-  else if (viewMode === 'voxel') drawVoxel();
-  else if (viewMode === 'lake') drawLake();
+  else if (viewMode === 'voxel' || viewMode === 'lake') drawRust();
   else drawOscilloscope();
 }
 
@@ -562,43 +561,48 @@ function drawMandel() {
   if (last && playing) showPosition(last);
 }
 
-/** HUD of the Mandelbrot and voxel views: place, zoom, engine info, position and level. */
+/** HUD of the Mandelbrot view: place, zoom, engine info, position and level. */
 function showHud(v, info) {
   const zoom = 3 / v.size;
   $('mhud').innerHTML = `${v.place || Mandel.PLACES[dir.place].name} · Zoom ${zoom < 1e4 ? zoom.toFixed(0) : zoom.toExponential(1).replace('e+', '·10^')}×` +
     `<br>${info || '…'}` + (v.m ? `<br>Pos ${v.m.order} · Zeile ${String(Math.floor(v.rowF)).padStart(2, '0')} · Pegel ${(dir.inten * 100).toFixed(0)} %` : '');
 }
 
-const vcanvas = $('voxel');
-let voxel = null;
-/** The voxel view: the director's picture as a landscape, seen from an orbiting camera. */
-function drawVoxel() {
-  if (!voxel) return;
-  const cssW = vcanvas.clientWidth, cssH = vcanvas.clientHeight;
-  if (!cssW || !cssH) return;
-  const v = direct(performance.now());
-  voxel.draw(v, cssW, cssH, Math.min(window.devicePixelRatio || 1, 2), voxelFine);
-  showHud(v, voxel.info);
-  if (last && playing) showPosition(last);
-}
-
-const lcanvas = $('lake');
-let lake = null;
-/** Voxel views: smooth surface in full resolution instead of blocky voxels (the default). */
+// ---- voxel views (landscape and lake): drawn by the Rust renderer (src/vis.rs) in its own
+// instance of modplayer.wasm, the same code as in the framebuffer edition (glue: rustvis.js)
+const rcanvas = $('rustview'), rctx = rcanvas.getContext('2d');
+/** Rust view numbers (see view_frame in src/vis.rs). */
+const RUST_VIEW = { voxel: 4, lake: 5 };
+let rust = null;
+/** Voxel views: smooth surface instead of blocky voxels (the default). */
 let voxelFine = true;
 $('vRes').onclick = () => {
   voxelFine = !voxelFine;
   $('vRes').textContent = 'Auflösung: ' + (voxelFine ? 'fein' : 'grob');
 };
-/** The lake view: bass hits and beats set a lake of voxels into motion. */
-function drawLake() {
-  if (!lake) return;
-  const cssW = lcanvas.clientWidth, cssH = lcanvas.clientHeight;
+
+/** Starts the renderer instance on first use: song, Mandelbrot workers. */
+async function initRust() {
+  if (rust) return;
+  try {
+    const r = await RustVis(wasmModule.slice(0));
+    if (modBytes) r.load(modBytes);
+    await r.startWorkers('mandel.wasm');
+    rust = r;
+  } catch (e) { $('msg').textContent = 'Voxel-Ansichten nicht möglich: ' + e.message; }
+}
+
+/** A voxel view: Rust draws it (with its own HUD) at device resolution into the canvas. */
+function drawRust() {
+  if (!rust) return;
+  const cssW = rcanvas.clientWidth, cssH = rcanvas.clientHeight;
   if (!cssW || !cssH) return;
-  const m = playing ? currentMsg(performance.now()) : null;
-  lake.draw(m, dir.inten, cssW, cssH, Math.min(window.devicePixelRatio || 1, 2), voxelFine);
-  $('mhud').textContent = lake.info;
-  if (m) showPosition(m);
+  const vi = rust.vi, f = RustVis.frameSize(cssW, cssH);
+  vi.vis_set_playing(playing ? 1 : 0);
+  vi.vis_set_fine(voxelFine ? 1 : 0);
+  rust.show(rcanvas, rctx, vi.vis_view(RUST_VIEW[viewMode], performance.now(), f.w, f.h, f.css));
+  rust.jobs();
+  if (last && playing) showPosition(last);
 }
 
 const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel', 'lake'];
@@ -616,8 +620,7 @@ async function setView(mode) {
   $('viewTitle').textContent = VIEW_TITLE[mode];
   canvas.style.display = mode === 'oscilloscope' ? 'block' : 'none';
   mcanvas.style.display = md ? 'block' : 'none';
-  vcanvas.style.display = vx ? 'block' : 'none';
-  lcanvas.style.display = lk ? 'block' : 'none';
+  rcanvas.style.display = vx || lk ? 'block' : 'none';
   $('spec').style.display = sm ? 'block' : 'none';
   $('cubeScene').style.display = mode === 'cube' ? 'block' : 'none';
   if (mode === 'cube') initCube();
@@ -626,19 +629,8 @@ async function setView(mode) {
   for (const b of document.querySelectorAll('#mctl .sonly')) b.style.display = sm ? '' : 'none';
   $('mPal').style.display = md || vx ? '' : 'none';
   $('vRes').style.display = vx || lk ? '' : 'none';
-  $('mhud').style.display = md || vx || lk ? 'block' : 'none';
-  if (lk && !lake) {
-    if (typeof Lake === 'function') lake = Lake(lcanvas);
-    else $('msg').textContent = 'See-Ansicht nicht möglich: lake.js wurde nicht geladen';
-  }
-  if (vx && !voxel) {
-    if (typeof Voxel !== 'function') $('msg').textContent = 'Voxel-Ansicht nicht möglich: voxel.js wurde nicht geladen';
-    else {
-      const x = Voxel(vcanvas);
-      if (await x.init()) voxel = x;
-      else $('msg').textContent = 'Voxel-Ansicht nicht möglich: WebAssembly-SIMD fehlt';
-    }
-  }
+  $('mhud').style.display = md ? 'block' : 'none';
+  if (vx || lk) await initRust();
   if (md && !mandel) {
     try {
       const m = Mandel(mcanvas);
@@ -663,7 +655,7 @@ $('mEng').onclick = () => {
 };
 $('mPal').onclick = () => {
   if (mandel) { mandel.nextPalette(); dir.dirty = true; }
-  if (voxel) voxel.nextPalette();
+  if (rust) rust.vi.vis_key(112);   // 'p': next palette of the Rust renderer
 };
 $('mFs').onclick = async () => {
   const box = $('viewBoxOuter');
@@ -680,8 +672,7 @@ document.addEventListener('fullscreenchange', () => {
   }
 });
 mcanvas.addEventListener('dblclick', () => $('mFs').click());
-vcanvas.addEventListener('dblclick', () => $('mFs').click());
-lcanvas.addEventListener('dblclick', () => $('mFs').click());
+rcanvas.addEventListener('dblclick', () => $('mFs').click());
 // small debug hook for automated tests
 window.__mt = { dir, state: () => ({ viewMode, mode3d: spec.mode3d, hist: spec.hist.length, nb: spec.nb, specSeq: spec.lastSeq, playing, engine: mandel && mandel.engine, info: mandel && mandel.info, view: dir.view && { size: dir.view.size, rot: dir.view.rot, place: dir.view.place, flash: dir.view.flash }, inten: dir.inten }) , setEngine: (e) => { mandel.engine = e; dir.dirty = true; } };
 

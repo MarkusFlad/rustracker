@@ -71,6 +71,12 @@ for (const [name, key] of views) {
   check(colours.size > 20, `${name}: draws (${colours.size} colours sampled, median ${times[times.length >> 1].toFixed(1)} ms/frame)`);
 }
 check(vi.vis_width() === W && vi.vis_height() === H, 'frame has the requested size');
+{ // a single view without bar and panel, as the classic edition uses it for the voxel views
+  const p = vi.vis_view(5, frameT, 640, 400, 1);
+  const px = new Uint32Array(vi.memory.buffer, p, vi.vis_width() * vi.vis_height()), colours = new Set();
+  for (let i = 0; i < px.length; i += 37) colours.add(px[i]);
+  check(vi.vis_width() === 640 && colours.size > 20, `vis_view: lake alone (${colours.size} colours sampled)`);
+}
 if (kernel) check(jobs > 10, `Mandelbrot pictures rendered by the SIMD kernel: ${jobs}`);
 check(vi.vis_pointer(10, 10) === 1, 'play button (top left) returns the play action');
 check(vi.vis_key(' '.charCodeAt(0)) === 1 && vi.vis_key('s'.charCodeAt(0)) === 2, 'keyboard actions');

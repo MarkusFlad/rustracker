@@ -12,6 +12,8 @@ RUSTC_BOOTSTRAP=1 rustc --edition 2021 --target wasm32-unknown-unknown --crate-t
   -C opt-level=3 -C target-feature=+simd128 -C panic=abort -C strip=symbols \
   -o www/mandel.wasm kernel/mandel_wasm.rs
 cp www/mandel.wasm www-fb/
+# the renderer glue is shared by both editions
+cp www/rustvis.js www-fb/
 echo "WASM: $(wc -c < www/modplayer.wasm) Bytes"
 
 if [ "$1" != "--no-serve" ]; then

@@ -650,6 +650,49 @@ impl Vis {
     /// # Returns
     /// Pointer to the RGBA pixels (`width()`·`height()` u32, rows without padding).
     pub fn frame(&mut self, now: f64, w: i32, h: i32, css: f64, pl: &Player) -> *const u32 {
+        let (s, dt, cur) = self.begin_frame(now, w, h, css);
+        let bar_h = self.draw_bar(&s, 13 * self.fs); // the bar may wrap onto more rows
+        let (view, panel) = self.layout(bar_h);
+        self.draw_view(&s.sub(view.x, view.y, view.w, view.h), now, dt, cur, pl);
+        if panel.w > 0 && panel.h > 0 {
+            self.draw_panel(&s.sub(panel.x, panel.y, panel.w, panel.h), cur, pl);
+        }
+        (&raw const self.fb) as *const u32
+    }
+
+    /// Draws a single view filling the whole frame, without bar and panel: for pages that
+    /// build their own user interface around it (the classic edition uses it for the voxel
+    /// views).
+    ///
+    /// # Arguments
+    /// * `view` - the view: 0 oscilloscope, 1 Mandelbrot, 2 spectrum, 3 cube, 4 voxel
+    ///   landscape, 5 lake (larger values: lake)
+    /// * `now` - time in ms (performance.now())
+    /// * `w` - wanted width in pixels
+    /// * `h` - wanted height in pixels (clamped like in [`Vis::frame`])
+    /// * `css` - framebuffer pixels per CSS pixel (size of the text in the view)
+    /// * `pl` - the player with the song
+    ///
+    /// # Returns
+    /// Pointer to the RGBA pixels (`width()`·`height()` u32).
+    pub fn view_frame(
+        &mut self,
+        view: u32,
+        now: f64,
+        w: i32,
+        h: i32,
+        css: f64,
+        pl: &Player,
+    ) -> *const u32 {
+        self.view = if view < N_VIEWS { view } else { V_LAKE };
+        let (s, dt, cur) = self.begin_frame(now, w, h, css);
+        self.draw_view(&s, now, dt, cur, pl);
+        (&raw const self.fb) as *const u32
+    }
+
+    /// Common start of a frame: size, first-time setup, time step, font scale, cleared
+    /// surface and the slot being heard.
+    fn begin_frame(&mut self, now: f64, w: i32, h: i32, css: f64) -> (Surface, f64, i32) {
         self.set_size(w, h);
         self.init_once(now);
         let dt = clampf((now - self.last_t) / 1000.0, 0.0, 0.1);
@@ -658,13 +701,15 @@ impl Vis {
         let s = Surface::new((&raw mut self.fb) as *mut u32, self.w, self.h);
         s.clear(BG);
         let cur = self.cur_msg(now);
-        let bar_h = self.draw_bar(&s, 13 * self.fs); // the bar may wrap onto more rows
-        let (view, panel) = self.layout(bar_h);
-        self.draw_view(&s.sub(view.x, view.y, view.w, view.h), now, dt, cur, pl);
-        if panel.w > 0 && panel.h > 0 {
-            self.draw_panel(&s.sub(panel.x, panel.y, panel.w, panel.h), cur, pl);
-        }
-        (&raw const self.fb) as *const u32
+        (s, dt, cur)
+    }
+
+    /// Smooth surface (`true`) or blocky voxels in the voxel views.
+    ///
+    /// # Arguments
+    /// * `on` - `true` for the smooth surface
+    pub fn set_fine(&mut self, on: bool) {
+        self.vx_fine = on;
     }
 
     /// Clamps the frame size to the framebuffer.
