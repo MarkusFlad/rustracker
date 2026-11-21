@@ -1,5 +1,5 @@
 //! Native test tool: render a MOD file to a 16-bit stereo WAV.
-//! Usage: mod2wav <in.mod> <out.wav> [max_seconds]
+//! Usage: `mod2wav <in.mod> <out.wav> [max_seconds]`
 
 use modplayer::replayer::Player;
 use std::io::Write;

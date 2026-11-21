@@ -1,5 +1,5 @@
 // Only for build environments without an installed wasm32 target:
-// a minimal stand-in for `core`, just enough for src/replayer.rs, src/fft.rs and src/api.rs.
+// a minimal stand-in for `core`, just enough for the replayer, the FFT, the framebuffer renderer and the API.
 //
 //   RUSTC_BOOTSTRAP=1 rustc --edition 2021 --target wasm32-unknown-unknown \
 //     --crate-type cdylib -C opt-level=3 -C panic=abort -C overflow-checks=no \
@@ -52,6 +52,7 @@ impl<T: PointeeSized> Copy for &T {}
 #[lang = "add_assign"] pub trait AddAssign<R = Self> { fn add_assign(&mut self, r: R); }
 #[lang = "sub_assign"] pub trait SubAssign<R = Self> { fn sub_assign(&mut self, r: R); }
 #[lang = "mul_assign"] pub trait MulAssign<R = Self> { fn mul_assign(&mut self, r: R); }
+#[lang = "div_assign"] pub trait DivAssign<R = Self> { fn div_assign(&mut self, r: R); }
 
 macro_rules! bin { ($tr:ident $m:ident $op:tt; $($t:ty)*) => { $(
     impl $tr for $t { type Output = $t; fn $m(self, r: $t) -> $t { self $op r } }
@@ -59,20 +60,22 @@ macro_rules! bin { ($tr:ident $m:ident $op:tt; $($t:ty)*) => { $(
 macro_rules! asg { ($tr:ident $m:ident $op:tt; $($t:ty)*) => { $(
     impl $tr for $t { fn $m(&mut self, r: $t) { *self $op r; } }
 )* } }
-bin!(Add add +; i32 u32 usize f32 f64);
-bin!(Sub sub -; i32 u32 usize f32 f64);
-bin!(Mul mul *; i32 u32 usize f32 f64);
-bin!(Div div /; i32 u32 usize f32 f64);
-bin!(Rem rem %; i32 u32 usize);
-bin!(BitAnd bitand &; u32 i32 usize);
-bin!(BitOr bitor |; u32 usize);
+bin!(Add add +; i32 u32 usize f32 f64 i64 u64 u8);
+bin!(Sub sub -; i32 u32 usize f32 f64 i64 u64 u8);
+bin!(Mul mul *; i32 u32 usize f32 f64 i64 u64);
+bin!(Div div /; i32 u32 usize f32 f64 i64 u64);
+bin!(Rem rem %; i32 u32 usize i64 u64);
+bin!(BitAnd bitand &; u32 i32 usize u64 i64);
+bin!(BitOr bitor |; u32 usize u64);
 bin!(BitXor bitxor ^; u32 usize);
-bin!(Shl shl <<; u32 i32 usize);
-bin!(Shr shr >>; u32 i32 usize);
-asg!(AddAssign add_assign +=; i32 u32 usize f32 f64);
-asg!(SubAssign sub_assign -=; i32 u32 usize f32 f64);
+bin!(Shl shl <<; u32 i32 usize u64);
+bin!(Shr shr >>; u32 i32 usize u64);
+asg!(AddAssign add_assign +=; i32 u32 usize f32 f64 i64 u64);
+asg!(SubAssign sub_assign -=; i32 u32 usize f32 f64 i64 u64);
 asg!(MulAssign mul_assign *=; f32 f64);
+asg!(DivAssign div_assign /=; u32 i32 usize f32 f64);
 impl Neg for i32 { type Output = i32; fn neg(self) -> i32 { -self } }
+impl Neg for i64 { type Output = i64; fn neg(self) -> i64 { -self } }
 impl Neg for f32 { type Output = f32; fn neg(self) -> f32 { -self } }
 impl Neg for f64 { type Output = f64; fn neg(self) -> f64 { -self } }
 impl Not for bool { type Output = bool; fn not(self) -> bool { !self } }
@@ -96,7 +99,7 @@ macro_rules! cmp { ($($t:ty)*) => { $(
         fn ge(&self, o: &$t) -> bool { *self >= *o }
     }
 )* } }
-cmp!(bool u8 u32 i32 usize f32 f64);
+cmp!(bool u8 u32 i32 usize f32 f64 i64 u64);
 
 #[lang = "index"] pub trait Index<I> { type Output: PointeeSized; fn index(&self, i: I) -> &Self::Output; }
 #[lang = "index_mut"] pub trait IndexMut<I>: Index<I> { fn index_mut(&mut self, i: I) -> &mut Self::Output; }
@@ -114,5 +117,25 @@ impl<T, const N: usize> IndexMut<usize> for [T; N] { fn index_mut(&mut self, i: 
 pub mod replayer;
 #[path = "../src/fft.rs"]
 pub mod fft;
+#[path = "../src/math.rs"]
+pub mod math;
+#[path = "../src/spectrum.rs"]
+pub mod spectrum;
+#[path = "../src/font.rs"]
+pub mod font;
+#[path = "../src/gfx.rs"]
+pub mod gfx;
+#[path = "../src/vis.rs"]
+pub mod vis;
+#[path = "../src/vis_cube.rs"]
+mod vis_cube;
+#[path = "../src/vis_mandel.rs"]
+mod vis_mandel;
+#[path = "../src/vis_osc.rs"]
+mod vis_osc;
+#[path = "../src/vis_spec.rs"]
+mod vis_spec;
+#[path = "../src/vis_ui.rs"]
+mod vis_ui;
 #[path = "../src/api.rs"]
 pub mod api;

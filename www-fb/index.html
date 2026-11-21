@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rust MOD Tracker · Framebuffer</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #020504; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<input id="f" type="file" hidden>
+<script src="song.js"></script>
+<script>
+'use strict';
+// Glue only: every pixel is drawn by Rust (src/vis.rs) into a framebuffer in WASM memory.
+// JS passes audio data, time and input in, and puts the framebuffer on the canvas.
+(async () => {
+  const cv = document.getElementById('c'), g = cv.getContext('2d'), file = document.getElementById('f');
+  const wasm = await (await fetch('modplayer.wasm')).arrayBuffer();
+  const vi = (await WebAssembly.instantiate(wasm, {})).instance.exports;   // renderer instance
+  let ctx = null, node = null, playing = false, song = null, ready = null, markReady = null;
+  /** Action codes returned by vis_pointer / vis_key (see ACT_* in src/vis.rs). */
+  const ACT = { PLAY: 1, STOP: 2, OPEN: 3, FULLSCREEN: 4, SEEK: 5, LOOP: 7 };
+
+  /** Gives a song to the renderer (patterns, title) and, once it runs, to the worklet. */
+  const load = (u8) => {
+    song = u8;
+    new Uint8Array(vi.memory.buffer, vi.mp_mod_buffer(), u8.length).set(u8);
+    vi.mp_load(u8.length, 44100);
+    vi.vis_event(2);
+    ready = new Promise((r) => { markReady = r; });
+    if (node) node.port.postMessage({ type: 'load', bytes: u8.slice().buffer });
+  };
+  load(Uint8Array.from(atob(self.DEFAULT_SONG_B64), (c) => c.charCodeAt(0)));
+
+  /** Copies a 'scope' message of the worklet into the renderer's next slot. */
+  const push = (m) => {
+    const n = Math.min(m.channels, 8), L = m.len, off = vi.vis_spec_offset();
+    const slot = new Float32Array(vi.memory.buffer, vi.vis_slot_ptr(), off + 2049);
+    slot.set(m.data.subarray(0, n * L), 0);                                   // channel scopes
+    slot.set(m.data.subarray(m.channels * L, (m.channels + 2) * L), n * L);   // master L, R
+    if (m.spec) slot.set(m.spec, off);
+    const lat = ((ctx.outputLatency || 0) + (ctx.baseLatency || 0)) * 1000;
+    vi.vis_commit(performance.now() + lat, m.order, m.row, m.pattern, m.speed, m.tempo, n, m.sampleRate);
+    if (m.ended) { playing = false; vi.vis_set_playing(0); vi.vis_event(1); }
+  };
+
+  /** Starts the audio context and the worklet on the first user gesture. */
+  const audio = async () => {
+    if (ctx) return;
+    ctx = new AudioContext();
+    await ctx.audioWorklet.addModule('worklet.js');
+    node = new AudioWorkletNode(ctx, 'mod-processor', { numberOfInputs: 0, outputChannelCount: [2] });
+    node.connect(ctx.destination);
+    node.port.onmessage = (e) => {
+      const m = e.data;
+      if (m.type === 'scope') push(m);
+      else if (m.type === 'ready') node.port.postMessage({ type: 'load', bytes: song.slice().buffer });
+      else if (m.type === 'loaded') markReady();
+    };
+    node.port.postMessage({ type: 'init', wasmBytes: wasm.slice(0) });
+  };
+  const send = (msg) => node.port.postMessage(msg);
+  const setPlaying = (on) => { playing = on; send({ type: 'play', on }); vi.vis_set_playing(on ? 1 : 0); };
+  const toggleFullscreen = async (on) => {
+    try { on ? await document.documentElement.requestFullscreen() : await document.exitFullscreen(); } catch {}
+  };
+
+  /** What each action does; the ones marked `audio` need the running worklet. */
+  const actions = {
+    [ACT.PLAY]: { audio: true, run: () => setPlaying(!playing) },
+    [ACT.STOP]: { audio: true, run: () => { setPlaying(false); send({ type: 'seek', order: 0 }); vi.vis_event(2); } },
+    [ACT.OPEN]: { run: () => file.click() },
+    [ACT.FULLSCREEN]: { run: () => toggleFullscreen(vi.vis_action_arg()) },
+    [ACT.SEEK]: { audio: true, run: () => send({ type: 'seek', order: vi.vis_action_arg() }) },
+    [ACT.LOOP]: { audio: true, run: () => send({ type: 'loop', on: !!vi.vis_action_arg() }) },
+  };
+  /** Carries out an action returned by the renderer (0 = nothing). */
+  const act = async (a) => {
+    const x = actions[a];
+    if (!x) return;
+    if (x.audio) { await audio(); await ready; await ctx.resume(); }
+    await x.run();
+  };
+
+  file.onchange = async () => {
+    const f = file.files[0]; file.value = '';
+    if (!f) return;
+    if (playing) setPlaying(false);
+    load(new Uint8Array(await f.arrayBuffer()));
+  };
+  document.addEventListener('fullscreenchange', () => vi.vis_set_fullscreen(document.fullscreenElement ? 1 : 0));
+  cv.addEventListener('pointerdown', (e) => {
+    act(vi.vis_pointer(Math.round(e.offsetX * cv.width / cv.clientWidth), Math.round(e.offsetY * cv.height / cv.clientHeight)));
+  });
+  addEventListener('keydown', (e) => {
+    if (e.key.length !== 1) return;
+    if (e.key === ' ') e.preventDefault();
+    act(vi.vis_key(e.key.charCodeAt(0)));
+  });
+
+  // Mandelbrot: the SIMD kernel from our zoomer (kernel/mandel_wasm.rs) in Web Workers.
+  // Rust hands out jobs (vis_mb_take), the workers render rows of palette indices.
+  /** Worker source: renders `rows` rows with the kernel and sends the indices back. */
+  const WSRC = `let ex, base, ready;
+onmessage = async (e) => {
+  const d = e.data;
+  if (d.module) { ready = WebAssembly.instantiate(d.module, {}).then((i) => { ex = i.exports; base = ex.memory.buffer.byteLength; }); return; }
+  await ready;
+  const n = d.w * d.rows * 4, need = base + n - ex.memory.buffer.byteLength;
+  if (need > 0) ex.memory.grow(Math.ceil(need / 65536));
+  ex.render(base, d.w, d.rows, d.re0, d.im0, d.step, d.maxit, 0, 2048, 16, 0);
+  const buf = ex.memory.buffer.slice(base, base + n);
+  postMessage({ gen: d.gen, y0: d.y0, w: d.w, rows: d.rows, buf }, [buf]);
+};`;
+  /** Copies finished rows into the renderer's back buffer unless the job is outdated. */
+  const onRows = (e) => {
+    const d = e.data;
+    if (d.gen !== vi.vis_mb_gen()) return;
+    new Uint32Array(vi.memory.buffer, vi.vis_mb_back_ptr() + d.y0 * d.w * 4, d.rows * d.w).set(new Uint32Array(d.buf));
+    vi.vis_mb_rows(d.gen, d.rows);
+  };
+  /** Starts the worker pool; without SIMD or workers Rust renders on the main thread. */
+  const startWorkers = async () => {
+    const n = Math.max(2, Math.min(8, navigator.hardwareConcurrency || 4)), pool = [];
+    try {
+      const kernel = await WebAssembly.compile(await (await fetch('mandel.wasm')).arrayBuffer());
+      const url = URL.createObjectURL(new Blob([WSRC], { type: 'text/javascript' }));
+      for (let i = 0; i < n; i++) {
+        const w = new Worker(url);
+        w.postMessage({ module: kernel });
+        w.onmessage = onRows;
+        pool.push(w);
+      }
+      vi.vis_mb_workers(n);
+    } catch (e) { console.warn('Mandelbrot workers unavailable, Rust renders on the main thread:', e); return []; }
+    return pool;
+  };
+  const pool = await startWorkers();
+  let next = 0;
+  /** Splits a new job (if any) into row bands, about three per worker. */
+  const jobs = () => {
+    const gen = vi.vis_mb_take();
+    if (!gen) return;
+    const [re0, im0, step, w, h, maxit] = [0, 1, 2, 3, 4, 5].map(vi.vis_mb_param);
+    const rows = Math.max(1, Math.ceil(h / (pool.length * 3)));
+    for (let y0 = 0; y0 < h; y0 += rows) {
+      pool[next++ % pool.length].postMessage({ gen, y0, w, rows: Math.min(rows, h - y0), re0, im0: im0 - y0 * step, step, maxit });
+    }
+  };
+
+  /** One animation frame: let Rust draw at device resolution (max ~1 Mpx), show it. */
+  const frame = () => {
+    requestAnimationFrame(frame);
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = innerWidth * dpr, h = innerHeight * dpr;
+    const k = Math.min(1, Math.sqrt(1e6 / (w * h)));
+    const p = vi.vis_frame(performance.now(), Math.round(w * k), Math.round(h * k), dpr * k);
+    const fw = vi.vis_width(), fh = vi.vis_height();
+    if (cv.width !== fw || cv.height !== fh) { cv.width = fw; cv.height = fh; }
+    g.putImageData(new ImageData(new Uint8ClampedArray(vi.memory.buffer, p, fw * fh * 4), fw, fh), 0, 0);
+    if (pool.length) jobs();
+  };
+  frame();
+})();
+</script>
+</body>
+</html>

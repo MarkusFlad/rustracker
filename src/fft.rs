@@ -1,53 +1,23 @@
-// Fast Fourier Transform for the spectrum view.
-//
-// Iterative radix-2 Cooley-Tukey FFT (decimation in time) with a Hann window.
-// Like replayer.rs it only uses the core language (no `core` methods, no std
-// math), so the sine for the twiddle factors and the window is computed here
-// with a Taylor polynomial. Sizes: powers of two from 16 to FFT_MAX.
+//! Fast Fourier Transform, reusable for any power-of-two size up to [`FFT_MAX`].
+//!
+//! Iterative radix-2 Cooley-Tukey FFT (decimation in time). Typical use:
+//!
+//! 1. [`Fft::setup`] once per size (twiddle factors and Hann window),
+//! 2. load the input: [`Fft::load_samples`] (linear buffer), [`Fft::load_ring`]
+//!    (the newest samples of a ring buffer) or [`Fft::set_input`] (complex, unwindowed),
+//! 3. [`Fft::transform`], then read [`Fft::output`] or call [`Fft::compute_power`]
+//!    to fill [`Fft::power`] (scaled so a full-scale sine gives about 1.0).
+//!
+//! [`Fft::analyse_ring`] and [`Fft::analyse`] do steps 2 and 3 in one call.
+//! Like the replayer it only uses the core language, so it also builds with
+//! `preview/minicore.rs`; sine and cosine come from [`crate::math`].
 
+use crate::math::{cos, sin, PI};
+
+/// Largest supported transform size.
 pub const FFT_MAX: usize = 4096;
-const PI: f64 = 3.141592653589793;
 
-/// sin(x) for any x, accurate to about 1e-15 (range reduction + Taylor series to x^17).
-pub fn sin(x: f64) -> f64 {
-    let mut x = x;
-    let two_pi = 2.0 * PI;
-    if x > PI || x < 0.0 - PI {
-        // x - 2π·round(x / 2π) without a floor function
-        let k = (x / two_pi) as i64;
-        x = x - k as f64 * two_pi;
-    }
-    while x > PI {
-        x -= two_pi;
-    }
-    while x < 0.0 - PI {
-        x += two_pi;
-    }
-    if x > PI / 2.0 {
-        x = PI - x;
-    } else if x < 0.0 - PI / 2.0 {
-        x = 0.0 - PI - x;
-    }
-    let x2 = x * x;
-    x * (1.0
-        - x2 / 6.0
-            * (1.0
-                - x2 / 20.0
-                    * (1.0
-                        - x2 / 42.0
-                            * (1.0
-                                - x2 / 72.0
-                                    * (1.0
-                                        - x2 / 110.0
-                                            * (1.0
-                                                - x2 / 156.0
-                                                    * (1.0 - x2 / 210.0 * (1.0 - x2 / 272.0))))))))
-}
-
-pub fn cos(x: f64) -> f64 {
-    sin(x + PI / 2.0)
-}
-
+/// FFT state: work buffers, twiddle factors, window and the last power spectrum.
 pub struct Fft {
     n: usize,
     re: [f32; FFT_MAX],
@@ -55,11 +25,13 @@ pub struct Fft {
     window: [f32; FFT_MAX],
     tw_cos: [f32; FFT_MAX],
     tw_sin: [f32; FFT_MAX],
-    /// Power spectrum of the last transform, bins 0 .. n/2.
+    /// Power spectrum (amplitude²) of the last [`Fft::compute_power`], bins `0 ..= n/2`.
     pub power: [f32; FFT_MAX],
 }
 
 impl Fft {
+    /// An FFT without a size; call [`Fft::setup`] before use. `const`, so it can
+    /// initialise a static.
     pub const fn empty() -> Fft {
         Fft {
             n: 0,
@@ -72,12 +44,14 @@ impl Fft {
         }
     }
 
+    /// The configured transform size (0 before [`Fft::setup`]).
     pub fn size(&self) -> usize {
         self.n
     }
 
-    /// Prepare twiddle factors and the Hann window for size `n` (power of two).
-    /// Returns false for an unsupported size.
+    /// Prepares twiddle factors and the Hann window for size `n` (a power of two
+    /// from 16 to [`FFT_MAX`]). Returns false for an unsupported size; calling it
+    /// again with the current size costs nothing.
     pub fn setup(&mut self, n: usize) -> bool {
         if n < 16 || n > FFT_MAX || (n & (n - 1)) != 0 {
             return false;
@@ -101,10 +75,27 @@ impl Fft {
         true
     }
 
-    /// Load `n` samples from a ring buffer (`ring_len` entries, the newest sample
-    /// just before `ring_pos`), window them, transform, and fill `power`.
-    /// power[k] is scaled so that a full-scale sine gives about 1.0 in its bin.
-    pub fn analyse_ring(&mut self, ring: *const f32, ring_len: usize, ring_pos: usize) {
+    /// Loads `n` real samples from a linear buffer, applying the Hann window.
+    ///
+    /// # Safety
+    /// `samples` must point to at least `size()` readable f32 values.
+    pub unsafe fn load_samples(&mut self, samples: *const f32) {
+        let mut i = 0;
+        while i < self.n {
+            let v = *((samples as usize + i * 4) as *const f32);
+            self.re[i] = v * self.window[i];
+            self.im[i] = 0.0;
+            i += 1;
+        }
+    }
+
+    /// Loads the newest `n` samples of a ring buffer (`ring_len` entries, the newest
+    /// sample just before index `ring_pos`), applying the Hann window. Does nothing
+    /// if the ring is shorter than the transform.
+    ///
+    /// # Safety
+    /// `ring` must point to `ring_len` readable f32 values.
+    pub unsafe fn load_ring(&mut self, ring: *const f32, ring_len: usize, ring_pos: usize) {
         let n = self.n;
         if n == 0 || ring_len < n {
             return;
@@ -112,27 +103,37 @@ impl Fft {
         let mut i = 0;
         while i < n {
             let idx = (ring_pos + ring_len - n + i) % ring_len;
-            let v = unsafe { *((ring as usize + idx * 4) as *const f32) };
+            let v = *((ring as usize + idx * 4) as *const f32);
             self.re[i] = v * self.window[i];
             self.im[i] = 0.0;
             i += 1;
         }
-        self.transform();
-        // |X|·2/Σw with Σw = n/2 for the Hann window -> amplitude; we return amplitude²
-        let scale = 4.0 / n as f32;
-        let mut k = 0;
-        while k <= n / 2 {
-            let a = self.re[k] * scale;
-            let b = self.im[k] * scale;
-            self.power[k] = a * a + b * b;
-            k += 1;
+    }
+
+    /// Sets one complex input value directly (no window).
+    pub fn set_input(&mut self, i: usize, re: f32, im: f32) {
+        self.re[i] = re;
+        self.im[i] = im;
+    }
+
+    /// One complex output bin of the last [`Fft::transform`].
+    pub fn output(&self, i: usize) -> (f32, f32) {
+        (self.re[i], self.im[i])
+    }
+
+    /// In-place forward FFT of the loaded input.
+    pub fn transform(&mut self) {
+        self.bit_reverse();
+        let mut len = 2;
+        while len <= self.n {
+            self.butterflies(len);
+            len = len << 1;
         }
     }
 
-    /// In-place complex FFT of re/im (size n).
-    pub fn transform(&mut self) {
+    /// Reorders the input into bit-reversed index order.
+    fn bit_reverse(&mut self) {
         let n = self.n;
-        // bit-reversal permutation
         let mut j = 0;
         let mut i = 1;
         while i < n {
@@ -143,64 +144,91 @@ impl Fft {
             }
             j = j ^ bit;
             if i < j {
-                let tr = self.re[i];
-                self.re[i] = self.re[j];
-                self.re[j] = tr;
-                let ti = self.im[i];
-                self.im[i] = self.im[j];
-                self.im[j] = ti;
+                self.swap(i, j);
             }
             i += 1;
         }
-        // butterflies
-        let mut len = 2;
-        while len <= n {
-            let half = len >> 1;
-            let tstep = n / len;
-            let mut start = 0;
-            while start < n {
-                let mut k = 0;
-                while k < half {
-                    let wr = self.tw_cos[k * tstep];
-                    let wi = 0.0 - self.tw_sin[k * tstep];
-                    let a = start + k;
-                    let b = a + half;
-                    let xr = self.re[b] * wr - self.im[b] * wi;
-                    let xi = self.re[b] * wi + self.im[b] * wr;
-                    self.re[b] = self.re[a] - xr;
-                    self.im[b] = self.im[a] - xi;
-                    self.re[a] += xr;
-                    self.im[a] += xi;
-                    k += 1;
-                }
-                start += len;
+    }
+
+    fn swap(&mut self, i: usize, j: usize) {
+        let tr = self.re[i];
+        self.re[i] = self.re[j];
+        self.re[j] = tr;
+        let ti = self.im[i];
+        self.im[i] = self.im[j];
+        self.im[j] = ti;
+    }
+
+    /// All butterflies of one stage with sub-transform length `len`.
+    fn butterflies(&mut self, len: usize) {
+        let half = len >> 1;
+        let tstep = self.n / len;
+        let mut start = 0;
+        while start < self.n {
+            let mut k = 0;
+            while k < half {
+                self.butterfly(start + k, start + k + half, k * tstep);
+                k += 1;
             }
-            len = len << 1;
+            start += len;
         }
     }
 
-    pub fn set_input(&mut self, i: usize, re: f32, im: f32) {
-        self.re[i] = re;
-        self.im[i] = im;
+    #[inline(always)]
+    fn butterfly(&mut self, a: usize, b: usize, tw: usize) {
+        let wr = self.tw_cos[tw];
+        let wi = 0.0 - self.tw_sin[tw];
+        let xr = self.re[b] * wr - self.im[b] * wi;
+        let xi = self.re[b] * wi + self.im[b] * wr;
+        self.re[b] = self.re[a] - xr;
+        self.im[b] = self.im[a] - xi;
+        self.re[a] += xr;
+        self.im[a] += xi;
     }
-    pub fn output(&self, i: usize) -> (f32, f32) {
-        (self.re[i], self.im[i])
+
+    /// Fills [`Fft::power`] (bins `0 ..= n/2`) from the last transform of a
+    /// Hann-windowed real signal: amplitude², so a full-scale sine is about 1.0.
+    pub fn compute_power(&mut self) {
+        let n = self.n;
+        // |X|·2/Σw with Σw = n/2 for the Hann window -> amplitude; we store amplitude²
+        let scale = 4.0 / n as f32;
+        let mut k = 0;
+        while k <= n / 2 {
+            let a = self.re[k] * scale;
+            let b = self.im[k] * scale;
+            self.power[k] = a * a + b * b;
+            k += 1;
+        }
+    }
+
+    /// Power spectrum of the newest `n` samples of a ring buffer
+    /// ([`Fft::load_ring`] + [`Fft::transform`] + [`Fft::compute_power`]).
+    ///
+    /// # Safety
+    /// `ring` must point to `ring_len` readable f32 values.
+    pub unsafe fn analyse_ring(&mut self, ring: *const f32, ring_len: usize, ring_pos: usize) {
+        if self.n == 0 || ring_len < self.n {
+            return;
+        }
+        self.load_ring(ring, ring_len, ring_pos);
+        self.transform();
+        self.compute_power();
+    }
+
+    /// Power spectrum of `n` samples from a linear buffer.
+    ///
+    /// # Safety
+    /// `samples` must point to at least `size()` readable f32 values.
+    pub unsafe fn analyse(&mut self, samples: *const f32) {
+        self.load_samples(samples);
+        self.transform();
+        self.compute_power();
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sine_is_accurate() {
-        let mut x = -20.0;
-        while x < 20.0 {
-            assert!((sin(x) - x.sin()).abs() < 1e-12, "sin({x})");
-            assert!((cos(x) - x.cos()).abs() < 1e-12, "cos({x})");
-            x += 0.0137;
-        }
-    }
 
     #[test]
     fn matches_naive_dft() {
@@ -234,6 +262,17 @@ mod tests {
         }
     }
 
+    fn peak_bin(f: &Fft, n: usize) -> (usize, f32) {
+        f.power[..=n / 2]
+            .iter()
+            .copied()
+            .enumerate()
+            .fold(
+                (0, 0f32),
+                |(bk, bv), (k, v)| if v > bv { (k, v) } else { (bk, bv) },
+            )
+    }
+
     #[test]
     fn sine_lands_in_its_bin() {
         let n = 4096;
@@ -244,16 +283,8 @@ mod tests {
             .collect();
         let mut f = Box::new(Fft::empty());
         f.setup(n);
-        f.analyse_ring(ring.as_ptr(), n, 0);
-        let (best, bp) =
-            f.power[..=n / 2]
-                .iter()
-                .copied()
-                .enumerate()
-                .fold(
-                    (0, 0f32),
-                    |(bk, bv), (k, v)| if v > bv { (k, v) } else { (bk, bv) },
-                );
+        unsafe { f.analyse_ring(ring.as_ptr(), n, 0) };
+        let (best, bp) = peak_bin(&f, n);
         let bin_hz = sr / n as f64;
         assert!(
             ((best as f64 * bin_hz) - freq).abs() < bin_hz,
@@ -261,5 +292,9 @@ mod tests {
         );
         // amplitude 0.5 -> power ~0.25 (Hann scalloping can lower it a bit)
         assert!(bp > 0.12 && bp < 0.3, "power {bp}");
+        // the linear-buffer path gives the same result
+        let ring_power: Vec<f32> = f.power[..=n / 2].to_vec();
+        unsafe { f.analyse(ring.as_ptr()) };
+        assert_eq!(&f.power[..=n / 2], &ring_power[..]);
     }
 }

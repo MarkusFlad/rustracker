@@ -1,12 +1,11 @@
 // Mandelbrot engine for the music view, taken from our real-time zoomer:
 //  * GPU: WebGL2 fragment shader, fp32 or df64 (double-float) depending on zoom depth
-//  * Rust/WASM: the SIMD kernel (2 doubles per vector, 8 pixels interleaved) in Web Workers
+//  * Rust/WASM: the SIMD kernel (kernel/mandel_wasm.rs: 2 doubles per vector, 8 pixels interleaved) in Web Workers
 // New compared with the zoomer: rotation, palette shift and flash for the music sync, and
 // reprojection of the last finished frame so motion stays smooth while the CPU engine renders.
 (function () {
 'use strict';
 
-const WASM_B64 = "AGFzbQEAAAABDwFgC39/f3x8fH9/f3x8AAMCAQAFAwEAEAYJAX8BQYCAwAALBxMCBm1lbW9yeQIABnJlbmRlcgAACrsmAbgmDQF/AX4BfwF8AX8BewF/InsBfwF+AX8BfgF8AkAgAkUNACABRQ0AIAhBf2ohCyAGrSEMQQAhDUQAAAAAAAAAACEOA0AgDSABbCEPIAQgBSAOoqH9FCEQQQAhEQNAIAMgBSARuKKg/RQgAyAFIBFBAXK4oqD9IgEhEiADIAUgEUEGcriioP0UIAMgBSARQQdyuKKg/SIBIRMgAyAFIBFBBHK4oqD9FCADIAUgEUEFcriioP0iASEUIAMgBSARQQJyuKKg/RQgAyAFIBFBA3K4oqD9IgEhFQJAAkAgBg0A/QwAAAAAAAAAAAAAAAAAAAAAIhYhFyAWIRggFiEZIBAhGiAQIRsgECEcIBAhHSATIR4gFCEfIBUhICASISEMAQtBBCEIIBIhISAVISAgFCEfIBMhHiAQIR0gECEcIBAhGyAQIRr9DAAAAAAAAAAAAAAAAAAAAAAiGSEYIBkhFyAZIRYDQCAQIBAgECAQIB4gHv3wASAa/fIB/fABIBogHiAe/fIBIiIgGiAa/fIBIiP98AH9DAAAAAAAABBAAAAAAAAAEEAiJP1LIiX9UiIaIBMgIiAj/fEB/fABIB4gJf1SIh4gHv3wAf3yAf3wASAaIBogGv3yASIiIB4gHv3yASIj/fABICT9SyIm/VIiGiATICMgIv3xAf3wASAeICb9UiIeIB798AH98gH98AEgGiAaIBr98gEiIiAeIB798gEiI/3wASAk/UsiJ/1SIhogEyAjICL98QH98AEgHiAn/VIiHiAe/fAB/fIB/fABIBogGiAa/fIBIiMgHiAe/fIBIij98AEgJP1LIiL9UiEaIBMgKCAj/fEB/fABIB4gIv1SIR4gECAQIBAgECAfIB/98AEgG/3yAf3wASAbIB8gH/3yASIjIBsgG/3yASIo/fABICT9SyIp/VIiGyAUICMgKP3xAf3wASAfICn9UiIfIB/98AH98gH98AEgGyAbIBv98gEiIyAfIB/98gEiKP3wASAk/UsiKv1SIhsgFCAoICP98QH98AEgHyAq/VIiHyAf/fAB/fIB/fABIBsgGyAb/fIBIiMgHyAf/fIBIij98AEgJP1LIiv9UiIbIBQgKCAj/fEB/fABIB8gK/1SIh8gH/3wAf3yAf3wASAbIBsgG/3yASIoIB8gH/3yASIs/fABICT9SyIj/VIhGyAUICwgKP3xAf3wASAfICP9UiEfIBAgECAQIBAgICAg/fABIBz98gH98AEgHCAgICD98gEiKCAcIBz98gEiLf3wASAk/UsiLP1SIhwgFSAoIC398QH98AEgICAs/VIiICAg/fAB/fIB/fABIBwgHCAc/fIBIiggICAg/fIBIi798AEgJP1LIi39UiIcIBUgLiAo/fEB/fABICAgLf1SIiAgIP3wAf3yAf3wASAcIBwgHP3yASIoICAgIP3yASIv/fABICT9SyIu/VIiHCAVIC8gKP3xAf3wASAgIC79UiIgICD98AH98gH98AEgHCAcIBz98gEiLyAgICD98gEiMP3wASAk/UsiKP1SIRwgFSAwIC/98QH98AEgICAo/VIhICAQIBAgECAQICEgIf3wASAd/fIB/fABIB0gISAh/fIBIjAgHSAd/fIBIjH98AEgJP1LIi/9UiIdIBIgMCAx/fEB/fABICEgL/1SIiEgIf3wAf3yAf3wASAdIB0gHf3yASIxICEgIf3yASIy/fABICT9SyIw/VIiHSASIDIgMf3xAf3wASAhIDD9UiIhICH98AH98gH98AEgHSAdIB398gEiMiAhICH98gEiM/3wASAk/UsiMf1SIh0gEiAzIDL98QH98AEgISAx/VIiISAh/fAB/fIB/fABIB0gHSAd/fIBIjIgISAh/fIBIjP98AEgJP1LIiT9UiEdIBIgMyAy/fEB/fABICEgJP1SISEgFiAl/dEBICb90QEgJ/3RASAi/dEBIRYgFyAp/dEBICr90QEgK/3RASAj/dEBIRcgGCAs/dEBIC390QEgLv3RASAo/dEBIRggGSAv/dEBIDD90QEgMf3RASAk/dEBIRkgKCAk/VAgI/1QICL9UP1TRQ0BIAggBkkhNCAIQQRqIQggNA0ACwsgESAPakECdCAAaiEIIBn9HQEhNUGAgIB4ITRBgICAeCE2AkAgGf0dACI3IAxZDQAgCyAKIAlEAAAAAAAAAAAgN7lEAAAAAAAA8D+gIB0gHf3yASAhICH98gH98AH9HQAiN0L/////////B4NCgICAgICAgPg/hL8iOEQAAAAAAADwv6AgOEQAAAAAAADwP6CjIjggOCA4oiI4IDggOCA4RBzHcRzHccw/okSSJEmSJEnSP6CiRJqZmZmZmdk/oKJEVVVVVVVV5T+gokQAAAAAAAAAQKCiRP6CK2VHFfc/oiA3QjSIQv8Pg0KBeHy5oEQAAAAAAADgP6K9IjdC/////////weDQoCAgICAgID4P4S/IjhEAAAAAAAA8L+gIDhEAAAAAAAA8D+goyI4IDggOKIiOCA4IDggOEQcx3Ecx3HMP6JEkiRJkiRJ0j+gokSamZmZmZnZP6CiRFVVVVVVVeU/oKJEAAAAAAAAAECgokT+gitlRxX3P6IgN0I0iEL/D4NCgXh8uaChIjggOEQAAAAAAAAAAGMboqD8B6dxQQJ0IAdqKAIAITYLIAggNjYCAAJAIDUgDFkNACALIAogCUQAAAAAAAAAACA1uUQAAAAAAADwP6AgHSAd/fIBICEgIf3yAf3wAf0dASI1Qv////////8Hg0KAgICAgICA+D+EvyI4RAAAAAAAAPC/oCA4RAAAAAAAAPA/oKMiOCA4IDiiIjggOCA4IDhEHMdxHMdxzD+iRJIkSZIkSdI/oKJEmpmZmZmZ2T+gokRVVVVVVVXlP6CiRAAAAAAAAABAoKJE/oIrZUcV9z+iIDVCNIhC/w+DQoF4fLmgRAAAAAAAAOA/or0iNUL/////////B4NCgICAgICAgPg/hL8iOEQAAAAAAADwv6AgOEQAAAAAAADwP6CjIjggOCA4oiI4IDggOCA4RBzHcRzHccw/okSSJEmSJEnSP6CiRJqZmZmZmdk/oKJEVVVVVVVV5T+gokQAAAAAAAAAQKCiRP6CK2VHFfc/oiA1QjSIQv8Pg0KBeHy5oKEiOCA4RAAAAAAAAAAAYxuioPwHp3FBAnQgB2ooAgAhNAsgCEEEaiA0NgIAIBj9HQEhNUGAgIB4ITRBgICAeCE2AkAgGP0dACI3IAxZDQAgCyAKIAlEAAAAAAAAAAAgN7lEAAAAAAAA8D+gIBwgHP3yASAgICD98gH98AH9HQAiN0L/////////B4NCgICAgICAgPg/hL8iOEQAAAAAAADwv6AgOEQAAAAAAADwP6CjIjggOCA4oiI4IDggOCA4RBzHcRzHccw/okSSJEmSJEnSP6CiRJqZmZmZmdk/oKJEVVVVVVVV5T+gokQAAAAAAAAAQKCiRP6CK2VHFfc/oiA3QjSIQv8Pg0KBeHy5oEQAAAAAAADgP6K9IjdC/////////weDQoCAgICAgID4P4S/IjhEAAAAAAAA8L+gIDhEAAAAAAAA8D+goyI4IDggOKIiOCA4IDggOEQcx3Ecx3HMP6JEkiRJkiRJ0j+gokSamZmZmZnZP6CiRFVVVVVVVeU/oKJEAAAAAAAAAECgokT+gitlRxX3P6IgN0I0iEL/D4NCgXh8uaChIjggOEQAAAAAAAAAAGMboqD8B6dxQQJ0IAdqKAIAITYLIAhBCGogNjYCAAJAIDUgDFkNACALIAogCUQAAAAAAAAAACA1uUQAAAAAAADwP6AgHCAc/fIBICAgIP3yAf3wAf0dASI1Qv////////8Hg0KAgICAgICA+D+EvyI4RAAAAAAAAPC/oCA4RAAAAAAAAPA/oKMiOCA4IDiiIjggOCA4IDhEHMdxHMdxzD+iRJIkSZIkSdI/oKJEmpmZmZmZ2T+gokRVVVVVVVXlP6CiRAAAAAAAAABAoKJE/oIrZUcV9z+iIDVCNIhC/w+DQoF4fLmgRAAAAAAAAOA/or0iNUL/////////B4NCgICAgICAgPg/hL8iOEQAAAAAAADwv6AgOEQAAAAAAADwP6CjIjggOCA4oiI4IDggOCA4RBzHcRzHccw/okSSJEmSJEnSP6CiRJqZmZmZmdk/oKJEVVVVVVVV5T+gokQAAAAAAAAAQKCiRP6CK2VHFfc/oiA1QjSIQv8Pg0KBeHy5oKEiOCA4RAAAAAAAAAAAYxuioPwHp3FBAnQgB2ooAgAhNAsgCEEMaiA0NgIAIBf9HQEhNUGAgIB4ITRBgICAeCE2AkAgF/0dACI3IAxZDQAgCyAKIAlEAAAAAAAAAAAgN7lEAAAAAAAA8D+gIBsgG/3yASAfIB/98gH98AH9HQAiN0L/////////B4NCgICAgICAgPg/hL8iOEQAAAAAAADwv6AgOEQAAAAAAADwP6CjIjggOCA4oiI4IDggOCA4RBzHcRzHccw/okSSJEmSJEnSP6CiRJqZmZmZmdk/oKJEVVVVVVVV5T+gokQAAAAAAAAAQKCiRP6CK2VHFfc/oiA3QjSIQv8Pg0KBeHy5oEQAAAAAAADgP6K9IjdC/////////weDQoCAgICAgID4P4S/IjhEAAAAAAAA8L+gIDhEAAAAAAAA8D+goyI4IDggOKIiOCA4IDggOEQcx3Ecx3HMP6JEkiRJkiRJ0j+gokSamZmZmZnZP6CiRFVVVVVVVeU/oKJEAAAAAAAAAECgokT+gitlRxX3P6IgN0I0iEL/D4NCgXh8uaChIjggOEQAAAAAAAAAAGMboqD8B6dxQQJ0IAdqKAIAITYLIAhBEGogNjYCAAJAIDUgDFkNACALIAogCUQAAAAAAAAAACA1uUQAAAAAAADwP6AgGyAb/fIBIB8gH/3yAf3wAf0dASI1Qv////////8Hg0KAgICAgICA+D+EvyI4RAAAAAAAAPC/oCA4RAAAAAAAAPA/oKMiOCA4IDiiIjggOCA4IDhEHMdxHMdxzD+iRJIkSZIkSdI/oKJEmpmZmZmZ2T+gokRVVVVVVVXlP6CiRAAAAAAAAABAoKJE/oIrZUcV9z+iIDVCNIhC/w+DQoF4fLmgRAAAAAAAAOA/or0iNUL/////////B4NCgICAgICAgPg/hL8iOEQAAAAAAADwv6AgOEQAAAAAAADwP6CjIjggOCA4oiI4IDggOCA4RBzHcRzHccw/okSSJEmSJEnSP6CiRJqZmZmZmdk/oKJEVVVVVVVV5T+gokQAAAAAAAAAQKCiRP6CK2VHFfc/oiA1QjSIQv8Pg0KBeHy5oKEiOCA4RAAAAAAAAAAAYxuioPwHp3FBAnQgB2ooAgAhNAsgCEEUaiA0NgIAIBb9HQEhNUGAgIB4ITRBgICAeCE2AkAgFv0dACI3IAxZDQAgCyAKIAlEAAAAAAAAAAAgN7lEAAAAAAAA8D+gIBogGv3yASAeIB798gH98AH9HQAiN0L/////////B4NCgICAgICAgPg/hL8iOEQAAAAAAADwv6AgOEQAAAAAAADwP6CjIjggOCA4oiI4IDggOCA4RBzHcRzHccw/okSSJEmSJEnSP6CiRJqZmZmZmdk/oKJEVVVVVVVV5T+gokQAAAAAAAAAQKCiRP6CK2VHFfc/oiA3QjSIQv8Pg0KBeHy5oEQAAAAAAADgP6K9IjdC/////////weDQoCAgICAgID4P4S/IjhEAAAAAAAA8L+gIDhEAAAAAAAA8D+goyI4IDggOKIiOCA4IDggOEQcx3Ecx3HMP6JEkiRJkiRJ0j+gokSamZmZmZnZP6CiRFVVVVVVVeU/oKJEAAAAAAAAAECgokT+gitlRxX3P6IgN0I0iEL/D4NCgXh8uaChIjggOEQAAAAAAAAAAGMboqD8B6dxQQJ0IAdqKAIAITYLIAhBGGogNjYCAAJAIDUgDFkNACALIAogCUQAAAAAAAAAACA1uUQAAAAAAADwP6AgGiAa/fIBIB4gHv3yAf3wAf0dASI1Qv////////8Hg0KAgICAgICA+D+EvyI4RAAAAAAAAPC/oCA4RAAAAAAAAPA/oKMiOCA4IDiiIjggOCA4IDhEHMdxHMdxzD+iRJIkSZIkSdI/oKJEmpmZmZmZ2T+gokRVVVVVVVXlP6CiRAAAAAAAAABAoKJE/oIrZUcV9z+iIDVCNIhC/w+DQoF4fLmgRAAAAAAAAOA/or0iNUL/////////B4NCgICAgICAgPg/hL8iOEQAAAAAAADwv6AgOEQAAAAAAADwP6CjIjggOCA4oiI4IDggOCA4RBzHcRzHccw/okSSJEmSJEnSP6CiRJqZmZmZmdk/oKJEVVVVVVVV5T+gokQAAAAAAAAAQKCiRP6CK2VHFfc/oiA1QjSIQv8Pg0KBeHy5oKEiOCA4RAAAAAAAAAAAYxuioPwHp3FBAnQgB2ooAgAhNAsgCEEcaiA0NgIAIBFBCGoiESABSQ0ACyAORAAAAAAAAPA/oCEOIA1BAWoiDSACRw0ACwsLADIEbmFtZQAMC21hbmRlbC53YXNtAQkBAAZyZW5kZXIHEgEAD19fc3RhY2tfcG9pbnRlcgA9CXByb2R1Y2VycwEMcHJvY2Vzc2VkLWJ5AQVydXN0Yx0xLjk3LjAgKDJkODE0NGI3OCAyMDI2LTA3LTA3KQCdAQ90YXJnZXRfZmVhdHVyZXMJKwtidWxrLW1lbW9yeSsPYnVsay1tZW1vcnktb3B0KxZjYWxsLWluZGlyZWN0LW92ZXJsb25nKwptdWx0aXZhbHVlKw9tdXRhYmxlLWdsb2JhbHMrE25vbnRyYXBwaW5nLWZwdG9pbnQrD3JlZmVyZW5jZS10eXBlcysIc2lnbi1leHQrB3NpbWQxMjg=";
 
 // ---------------------------------------------------------------- palettes
 const PAL_LEN = 2048, DENSITY = 16;
@@ -15,7 +14,9 @@ const PALETTES = [
   [[0,'#0b0420'],[0.2,'#5a1a8c'],[0.45,'#ff4f7b'],[0.62,'#ffd36b'],[0.8,'#2fd3c6'],[1,'#0b0420']],
   [[0,'#000000'],[0.3,'#3a3a3a'],[0.55,'#e8e8e8'],[0.75,'#8a8a8a'],[1,'#000000']],
 ];
+/** '#rrggbb' -> [r, g, b]. */
 function hex(h) { return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]; }
+/** PAL_LEN RGBA entries from colour stops [[t, '#rrggbb'], ...], smoothstep between stops. */
 function makePalette(stops) {
   const p = new Uint32Array(PAL_LEN);
   for (let i = 0; i < PAL_LEN; i++) {
@@ -27,6 +28,7 @@ function makePalette(stops) {
   }
   return p;
 }
+/** The palette rotated by `shift` entries (for the CPU engine, which bakes colours in). */
 function rotated(p, shift) {
   const s = ((Math.round(shift) % PAL_LEN) + PAL_LEN) % PAL_LEN, o = new Uint32Array(PAL_LEN);
   for (let i = 0; i < PAL_LEN; i++) o[i] = p[(i + s) % PAL_LEN];
@@ -34,6 +36,7 @@ function rotated(p, shift) {
 }
 
 // ---------------------------------------------------------------- CPU workers (Rust/WASM SIMD kernel)
+/** Worker source: keeps a palette in kernel memory and renders row bands to RGBA. */
 const WORKER_SRC = `
 let inst=null,mem=null,palPtr=0,palLen=0,outPtr=0,ready=null;
 function ensure(bytes){const need=outPtr+bytes-mem.buffer.byteLength;if(need>0)mem.grow(Math.ceil(need/65536));}
@@ -59,8 +62,10 @@ onmessage=async e=>{
 };`;
 
 // ---------------------------------------------------------------- GPU (WebGL2)
+/** Full-screen triangle. */
 const VS = `#version 300 es
 in vec2 p; void main(){gl_Position=vec4(p,0.,1.);}`;
+/** Escape time per pixel, fp32 or df64 (double-float: value + error term) arithmetic. */
 const FS = `#version 300 es
 precision highp float; precision highp int;
 uniform vec2 uRes; uniform vec2 uCx; uniform vec2 uCy; uniform float uStep;
@@ -96,11 +101,15 @@ void main(){
   int idx=int(mod(floor(nu*uDensity+uShift),2048.0));
   o=texelFetch(uPal,ivec2(idx,0),0);
 }`;
+/** A double as two floats (hi, lo) for the df64 shader. */
 const split = (x) => { const hi = Math.fround(x); return [hi, Math.fround(x - hi)]; };
 
-// Mandel(canvas): draws views {cx, cy, size, rot, shift, flash} onto a 2D canvas.
-// size = visible height in the complex plane, rot = rotation in radians,
-// shift = palette offset (palette entries), flash = 0..1 white overlay.
+/**
+ * Mandel(canvas): draws views {cx, cy, size, rot, shift, flash} onto a 2D canvas.
+ * size = visible height in the complex plane, rot = rotation in radians,
+ * shift = palette offset (palette entries), flash = 0..1 white overlay.
+ * Engines: 'gpu' (WebGL2) and 'wasm' (SIMD kernel in Web Workers).
+ */
 function Mandel(canvas) {
   const ctx = canvas.getContext('2d');
   let palIdx = 0, basePal = makePalette(PALETTES[0]);
@@ -109,6 +118,7 @@ function Mandel(canvas) {
   const OVERSCAN = 1.3; // render a little larger than the view so rotation never shows corners
 
   // ---- GPU
+  /** Compiles the shader and sets up the palette texture; false without WebGL2. */
   function initGPU() {
     try {
       glCanvas = document.createElement('canvas');
@@ -131,13 +141,16 @@ function Mandel(canvas) {
       return true;
     } catch (e) { console.error('WebGL2:', e); gl = null; return false; }
   }
+  /** Uploads the current palette to the GPU. */
   function gpuPalette() {
     if (!gl) return;
     gl.bindTexture(gl.TEXTURE_2D, glPalTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, PAL_LEN, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(basePal.buffer));
   }
+  /** True when the pixel step is too fine for fp32 at this position. */
   function needDf(step, v) { return step < 4e-7 * Math.max(1, Math.abs(v.cx), Math.abs(v.cy)); }
 
+  /** Renders W x H pixels (with overscan) on the GPU, adapting the resolution to ~14 ms. */
   function renderGPU(v, W, H, mi) {
     const step = v.size * OVERSCAN / H;
     const df = needDf(step, v);
@@ -164,11 +177,11 @@ function Mandel(canvas) {
   let gen = 0, queue = [], pending = 0, back = null, front = null, cpuFactor = 4, jobStart = 0;
   let palShiftSent = 0, palSentAt = 0;
   const NW = Math.max(2, Math.min(8, navigator.hardwareConcurrency || 4));
+  /** Compiles the SIMD kernel and starts the worker pool; false without WASM SIMD. */
   async function initCPU() {
     try {
-      const b = atob(WASM_B64), u = new Uint8Array(b.length);
-      for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
-      wasmModule = await WebAssembly.compile(u);
+      // the SIMD kernel, built from kernel/mandel_wasm.rs
+      wasmModule = await WebAssembly.compile(await (await fetch('mandel.wasm')).arrayBuffer());
       const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
       for (let i = 0; i < NW; i++) {
         const w = new Worker(url);
@@ -180,11 +193,13 @@ function Mandel(canvas) {
       return true;
     } catch (e) { console.error('WASM SIMD:', e); return false; }
   }
+  /** Sends the palette rotated by `shift` to all workers. */
   function sendPalette(shift) {
     const p = rotated(basePal, shift);
     for (const w of workers) w.postMessage({ type: 'pal', pal: p });
     palShiftSent = shift; palSentAt = performance.now();
   }
+  /** Starts a new back buffer for view `v`, split into row bands for the workers. */
   function startCPU(v, cssH, dpr, mi) {
     gen++; queue = [];
     const H = Math.max(8, Math.ceil(cssH * dpr * OVERSCAN / cpuFactor));
@@ -198,6 +213,7 @@ function Mandel(canvas) {
     pending = queue.length; jobStart = performance.now();
     dispatch(mi);
   }
+  /** Hands queued row bands to idle workers. */
   function dispatch(mi) {
     while (idle.length && queue.length) {
       const w = idle.pop(), j = queue.shift(), b = back;
@@ -206,6 +222,7 @@ function Mandel(canvas) {
     }
   }
   let curMi = 256;
+  /** A band is done: copy it into the back buffer; when complete, swap and adapt (~40 ms). */
   function onResult(w, d) {
     idle.push(w);
     if (back && d.gen === gen) {
@@ -221,7 +238,7 @@ function Mandel(canvas) {
     dispatch(curMi);
   }
 
-  // ---- drawing: map a finished buffer into the rotated view
+  /** Maps a finished buffer into the rotated, zoomed view (reprojection keeps motion smooth). */
   function blit(b, v, cssW, cssH, dpr) {
     const s = v.size / cssH;                       // complex units per CSS pixel
     ctx.save();
@@ -235,12 +252,37 @@ function Mandel(canvas) {
     ctx.restore();
   }
 
+  /** Iteration limit for the zoom depth (multiple of 4 for the SIMD kernel). */
   function maxIter(v) {
     const z = Math.max(1, 3 / v.size), l = Math.log2(z);
     return Math.round(Math.min(6000, Math.max(64, 120 + 60 * Math.pow(l, 1.15))) / 4) * 4;
   }
 
+  /** GPU: render at the adaptive resolution and show it at once. */
+  function drawGPU(v, cssW, cssH, dpr, mi) {
+    const H = Math.max(8, Math.ceil(cssH * dpr * OVERSCAN / gpuFactor));
+    const W = Math.max(8, Math.ceil(H * cssW / cssH));
+    blit(renderGPU(v, W, H, mi), v, cssW, cssH, dpr);
+  }
+  /** CPU: start the next picture when the last one is done, show the newest finished one. */
+  function drawCPU(v, cssW, cssH, dpr, mi) {
+    // palette shift for the CPU engine: resend a rotated palette now and then
+    const now = performance.now();
+    if (Math.abs((v.shift || 0) - palShiftSent) > 8 && now - palSentAt > 90) sendPalette(v.shift || 0);
+    if (!back) startCPU(v, cssH, dpr, mi);
+    if (front) blit(front, v, cssW, cssH, dpr);
+  }
+  /** Additive white flash, strength 0..0.6. */
+  function flashOverlay(flash) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = 'rgba(255,255,255,' + Math.min(0.6, flash).toFixed(3) + ')';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   return {
+    /** Starts the engines; `{cpu: false}` skips the worker pool when WebGL2 works. */
     async init(opts) {
       const g = initGPU();
       // a GPU-only instance (e.g. a cube face) skips its own worker pool when WebGL2 works
@@ -248,41 +290,30 @@ function Mandel(canvas) {
       engine = g ? 'gpu' : 'wasm';
       return { gpu: g, wasm: c };
     },
+    /** The available engines. */
     engines() { return [gl ? 'gpu' : null, cpuReady ? 'wasm' : null].filter(Boolean); },
     get engine() { return engine; },
     set engine(e) { engine = e; front = null; back = null; gen++; },
+    /** Switches to the next palette. */
     nextPalette() {
       palIdx = (palIdx + 1) % PALETTES.length; basePal = makePalette(PALETTES[palIdx]);
       gpuPalette(); sendPalette(palShiftSent);
     },
+    /** Engine, resolution and timing of the last picture, for the HUD. */
     get info() { return lastInfo; },
+    /** Draws view `v` into a canvas of cssW x cssH CSS pixels at `dpr` device pixels each. */
     draw(v, cssW, cssH, dpr) {
       const mi = maxIter(v); curMi = mi;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      if (engine === 'gpu' && gl) {
-        const H = Math.max(8, Math.ceil(cssH * dpr * OVERSCAN / gpuFactor));
-        const W = Math.max(8, Math.ceil(H * cssW / cssH));
-        blit(renderGPU(v, W, H, mi), v, cssW, cssH, dpr);
-      } else if (cpuReady) {
-        // palette shift for the CPU engine: resend a rotated palette now and then
-        const now = performance.now();
-        if (Math.abs((v.shift || 0) - palShiftSent) > 8 && now - palSentAt > 90) sendPalette(v.shift || 0);
-        if (!back) startCPU(v, cssH, dpr, mi);
-        if (front) blit(front, v, cssW, cssH, dpr);
-      }
-      if (v.flash > 0.01) {
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = 'rgba(255,255,255,' + Math.min(0.6, v.flash).toFixed(3) + ')';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalCompositeOperation = 'source-over';
-      }
+      if (engine === 'gpu' && gl) drawGPU(v, cssW, cssH, dpr, mi);
+      else if (cpuReady) drawCPU(v, cssW, cssH, dpr, mi);
+      if (v.flash > 0.01) flashOverlay(v.flash);
     },
   };
 }
 
-// Interesting places for deep zooms: [cx, cy, smallest useful view height]
+/** Interesting places for deep zooms: centre and smallest useful view height. */
 Mandel.PLACES = [
   { name: 'Seepferdchental', cx: -0.743643887037151, cy: 0.131825904205330, min: 1e-4 },
   { name: 'Doppelspirale', cx: -0.77568377, cy: 0.13646737, min: 2e-6 },
