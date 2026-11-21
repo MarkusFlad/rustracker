@@ -86,7 +86,7 @@ jobs:
         run: node tests/wasm_smoke.mjs www/modplayer.wasm "$DEMO_SONG"
       - name: Check the web page scripts
         run: |
-          for f in www/worklet.js www/mandel.js www-fb/worklet.js; do node --check "$f"; done
+          for f in www/*.js www-fb/*.js; do node --check "$f"; done
           python3 - <<'EOF'
           import re, pathlib
           for i, page in enumerate(["www/index.html", "www-fb/index.html"]):
@@ -99,7 +99,8 @@ jobs:
       - name: Assemble the site
         run: |
           mkdir -p _site/fb
-          cp www/index.html www/worklet.js www/mandel.js _site/
+          # every script of the page, so a new one cannot be forgotten (song.js is replaced below)
+          cp www/index.html www/*.js _site/
           cp target/wasm32-unknown-unknown/release/modplayer.wasm preview/out/mandel.wasm _site/
           python3 scripts/embed_song.py "$DEMO_SONG" _site/song.js
           # framebuffer edition at /fb/
