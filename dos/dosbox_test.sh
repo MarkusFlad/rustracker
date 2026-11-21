@@ -1,6 +1,7 @@
 #!/bin/sh
 # Runs RTRACK.COM for 8 seconds of playback in DOSBox (SB16, XMS, no window) and checks the
-# message it prints on exit. Needs dosbox and xvfb-run.
+# message it prints on exit; takes a screenshot after 6 s (dosbox.png). Needs dosbox, Xvfb
+# and ImageMagick (import).
 set -e
 cd "$(dirname "$0")/out"
 cat > test.conf <<CONF
@@ -32,7 +33,16 @@ exit
 CONF
 rm -f RESULT.TXT dosbox.log
 touch RESULT.TXT
-SDL_AUDIODRIVER=dummy timeout 180 xvfb-run -a dosbox -conf test.conf > dosbox.log 2>&1 || echo "DOSBox: exit $?" >> dosbox.log
+# own X server, so a screenshot can be taken while RTRACK plays
+Xvfb :77 -screen 0 1024x768x24 >/dev/null 2>&1 &
+XPID=$!
+sleep 1
+DISPLAY=:77 SDL_AUDIODRIVER=dummy timeout 180 dosbox -conf test.conf > dosbox.log 2>&1 &
+DPID=$!
+sleep 6
+DISPLAY=:77 import -window root dosbox.png || echo "no screenshot" >> dosbox.log
+wait $DPID || echo "DOSBox: exit $?" >> dosbox.log
+kill $XPID 2>/dev/null || true
 cat dosbox.log
 echo "--- RTRACK.COM said:"
 cat RESULT.TXT
