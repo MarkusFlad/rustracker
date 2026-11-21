@@ -79,12 +79,22 @@ impl Vis {
     pub(crate) fn trace(&self, s: &Surface, k: usize, start: usize, win: usize, c: u32, gain: f32) {
         let th = imax(self.fs - 1, 1);
         let (w, h) = (s.w as f32, s.h as f32);
+        // DOS: at most one point per pixel column (the slow CPU draws far fewer segments)
+        #[cfg(dos)]
+        let n = if win > s.w as usize + 1 {
+            s.w as usize + 1
+        } else {
+            win
+        };
+        #[cfg(not(dos))]
+        let n = win;
         let mut px = 0.0;
         let mut py = 0.0;
         let mut i = 0;
-        while i < win {
-            let v = clamp1(self.sv(k, start + i) * gain);
-            let x = i as f32 / (win - 1) as f32 * (w - 1.0);
+        while i < n {
+            let j = if n == win { i } else { i * (win - 1) / (n - 1) };
+            let v = clamp1(self.sv(k, start + j) * gain);
+            let x = i as f32 / (n - 1) as f32 * (w - 1.0);
             let y = h * 0.5 - v * h * 0.44;
             if i > 0 {
                 s.trace_line(px, py, x, y, c, th);

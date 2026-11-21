@@ -10,7 +10,8 @@ kompiliert und spielt im Browser über ein AudioWorklet ab. Dazu gibt es ein Osz
 
 - [▶ Klassische Edition](https://markusflad.github.io/rustracker/): Oberfläche in HTML/Canvas, Mandelbrot auf der GPU (WebGL2) oder mit dem Rust-SIMD-Kern
 - [▶ Framebuffer-Edition](https://markusflad.github.io/rustracker/fb/): jedes Pixel von Rust gezeichnet, nur ein paar Zeilen JavaScript
-- [▶ Promo-Video](https://markusflad.github.io/rustracker/video/): eine Minute Rustracker, gerendert vom Rustracker selbst
+- [▶ Promo-Video](https://markusflad.github.io/rustracker/video/): gut eine Minute Rustracker, gerendert vom Rustracker selbst
+- [▶ DOS-Edition](https://markusflad.github.io/rustracker/dos/): derselbe Rust-Code für Pentium, VGA 320×200 und Sound Blaster, im Browser über js-dos (DOSBox); dort auch die ZIP für einen echten PC
 
 [![Promo-Video](https://markusflad.github.io/rustracker/video/rustracker_thumbnail.jpg)](https://markusflad.github.io/rustracker/video/)
 
@@ -24,7 +25,8 @@ Framebuffer-Edition auch mit der Taste V). Die Bilder stammen aus der klassische
 | ![Oszilloskop](docs/screenshots/oszilloskop.jpg)<br>**Oszilloskop**: Master L/R, XY-Figur und eine Spur pro Kanal | ![Mandelbrot-Zoom](docs/screenshots/mandelbrot.jpg)<br>**Mandelbrot-Zoom** im Takt der Musik |
 | ![Spektrum 2D](docs/screenshots/spektrum-2d.jpg)<br>**Spektrum 2D**: FFT-Balken mit Spitzenwerten und Spektrogramm | ![Spektrum 3D](docs/screenshots/spektrum-3d.jpg)<br>**Spektrum 3D**: die letzten 4 Sekunden in die Tiefe |
 | ![Würfel](docs/screenshots/wuerfel.jpg)<br>**Würfel** mit sechs Live-Flächen | ![Voxel-Landschaft](docs/screenshots/voxel.jpg)<br>**Voxel-Landschaft** aus dem Mandelbrot-Zoom |
-| ![See aus Voxeln](docs/screenshots/see.jpg)<br>**See aus Voxeln**: Bass und Takt erzeugen Wellen | ![Framebuffer-Edition](docs/screenshots/framebuffer.jpg)<br>**Framebuffer-Edition**: jedes Pixel in Rust gezeichnet |
+| ![See aus Voxeln](docs/screenshots/see.jpg)<br>**See aus Voxeln**: Bass und Takt erzeugen Wellen | ![Amiga-Demo](docs/screenshots/amiga.jpg)<br>**Amiga-Demo**: Copper-Bars, Sinus-Scroller, Sternenfeld |
+| ![Framebuffer-Edition](docs/screenshots/framebuffer.jpg)<br>**Framebuffer-Edition**: jedes Pixel in Rust gezeichnet | |
 
 ## Starten
 
@@ -219,6 +221,21 @@ gibt ihr Song und Worklet-Daten und lässt sie mit `vis_view` nur die jeweilige 
 (Anbindung in `www/rustvis.js`, die auch die Framebuffer-Edition nutzt). So gibt es den
 Algorithmus nur einmal, und er läuft überall als kompiliertes WebAssembly.
 
+## Amiga-Ansicht
+
+Die siebte Ansicht ist eine Verbeugung vor den Amiga-Demos, aus denen das MOD-Format stammt:
+
+- **Copper-Bars:** ein schimmernder Farbbalken pro Kanal, der auf einer Sinusbahn durchs Bild
+  schwingt; weiter hinten liegende Balken werden zuerst und dünner gezeichnet. Spielt der Kanal
+  eine Note, leuchtet sein Balken weiß auf.
+- **Sinus-Scroller:** eine große Laufschrift in der eingebauten Pixelschrift, jede Punktspalte
+  auf einer wandernden Sinuswelle. Sie zeigt den Songtitel und die Sample-Namen, in denen
+  Musiker traditionell Grüße und Botschaften versteckt haben.
+- **Logo und Sternenfeld:** „RUSTRACKER“ in wechselnden Copper-Farben, das auf jedem Schlag
+  hüpft, und ein Sternenfeld, dessen Tempo dem Pegel folgt.
+
+Sie steckt in `src/vis_amiga.rs` und wird in beiden Editionen von Rust gezeichnet.
+
 ## Continuous Integration
 
 `.github/workflows/ci.yml` läuft bei jedem Push und Pull Request:
@@ -229,7 +246,8 @@ Algorithmus nur einmal, und er läuft überall als kompiliertes WebAssembly.
 | **WebAssembly** | Build mit `cargo` für `wasm32-unknown-unknown` **und** über `preview/minicore.rs`. Der zweite Build stellt sicher, dass die Bibliothek weiterhin nur den Sprachkern nutzt. Dazu kommt der Mandelbrot-SIMD-Kern (`mandel.wasm`). Danach laufen in Node `tests/wasm_smoke.mjs` (Exporte, Laden, Klang, FFT, Vergleich mit dem nativen Rendern auf ±2 LSB) und `tests/vis_smoke.mjs` (Framebuffer-Renderer, mit und ohne SIMD-Kern). Zum Schluss werden die Skripte beider Seiten geprüft und die Website als Artefakt `site` gebaut. |
 | **Songs** | Erzeugt die beiden eigenen Songs neu aus `songs/*.py` und prüft, dass der Rust-Player sie abspielt |
 | **Video** | Nicht bei Pull Requests: rendert das Promo-Video mit `tools/promo/make_video.sh` (siehe unten) und stellt es als Artefakt `video` bereit |
-| **Pages** | Nur bei Push auf den Standard-Branch (`main` oder `master`): veröffentlicht beide Editionen mit „Neon Techno“ auf GitHub Pages (klassisch unter `/`, Framebuffer unter `/fb/`) und das Promo-Video unter `/video/` |
+| **DOS** | Baut die DOS-Edition (`dos/build.sh`), lässt sie im Linux-Testrahmen ohne Hardware durch alle Ansichten laufen (`dos/selftest_check.py`), spielt sie 8 Sekunden in DOSBox mit Sound Blaster 16 ab (`dos/dosbox_test.sh`, noch nicht blockierend) und packt ZIP, js-dos-Bündel und Seite als Artefakt `dos` |
+| **Pages** | Nur bei Push auf den Standard-Branch (`main` oder `master`): veröffentlicht beide Editionen mit „Neon Techno“ auf GitHub Pages (klassisch unter `/`, Framebuffer unter `/fb/`), das Promo-Video unter `/video/` und die DOS-Edition unter `/dos/` |
 
 Für GitHub Pages musst du einmalig unter *Settings → Pages → Source* „GitHub Actions“ wählen.
 Danach öffnet [https://markusflad.github.io/rustracker/](https://markusflad.github.io/rustracker/) direkt den Tracker und [https://markusflad.github.io/rustracker/fb/](https://markusflad.github.io/rustracker/fb/) die Framebuffer-Edition; die WASM-Dateien dafür baut die CI bei jedem Push neu.
@@ -244,6 +262,40 @@ cargo run --release --bin mod2wav -- www/drozerix_-_neon_techno.mod /tmp/native.
 node tests/wasm_smoke.mjs www/modplayer.wasm www/drozerix_-_neon_techno.mod /tmp/native.wav
 node tests/vis_smoke.mjs www-fb/modplayer.wasm www/drozerix_-_neon_techno.mod www-fb/mandel.wasm
 ```
+
+## DOS-Edition (`dos/`)
+
+![DOS-Edition, 320×200 mit 256 Farben](docs/screenshots/dos.png)
+
+Der Rustracker läuft auch unter DOS, auf einem Pentium mit VGA und Sound Blaster. Replayer,
+FFT und Framebuffer-Renderer sind dieselben Quellen wie im Browser; weil sie nur den Sprachkern
+nutzen, übersetzt `rustc` sie ohne Änderung für `i586-unknown-linux-gnu` (Pentium ohne MMX/SSE,
+Gleitkomma auf der x87-FPU). Dazu kommen ein paar hundert Zeilen DOS-Schicht:
+
+| Datei | Aufgabe |
+|---|---|
+| `dos/stub.asm` | `RTRACK.COM`, 16-Bit-Lader: lädt `RTRACK.BIN` und den Song über XMS (oder INT 15h) in den Erweiterungsspeicher, reserviert den DMA-Puffer, schaltet VGA-Modus 13h ein und springt in den 32-Bit-Protected-Mode; danach stellt es Real Mode, Interrupt-Controller und Textmodus wieder her und zeigt die Meldungen des Programms |
+| `dos/entry.asm` | 32-Bit-Einstieg: Interrupt-Tabelle, Interrupt-Controller auf 20h–2Fh, FPU-Zustand im Interrupt sichern, Ports für Rust |
+| `dos/dos.rs` | Sound Blaster 16 (44,1 kHz Stereo, 16 Bit) oder 2.0/Pro (22 kHz Mono, 8 Bit) mit Auto-Init-DMA, gemischt im Interrupt; Tastatur; Umrechnung der RGBA-Bilder auf eine feste 256-Farben-Palette mit geordnetem Dithering; Anzeige im vertikalen Strahlrücklauf |
+| `dos/rt.asm` | `memcpy` und Co., die der Compiler aufruft |
+| `dos/rtrack.rs` | Crate-Wurzel: bindet `src/` mit `--cfg dos` ein (kleine Puffer, Linien in Festkomma statt vieler langsamer Gleitkomma-Umwandlungen) |
+| `dos/selftest.asm` | Linux-Testrahmen (i386): spielt ohne Hardware und schreibt das letzte Bild |
+
+Bauen (braucht `nasm`, `ld.lld` und das Target `i586-unknown-linux-gnu`):
+
+```sh
+rustup target add i586-unknown-linux-gnu
+dos/build.sh selftest                                   # -> dos/out/RTRACK.COM, RTRACK.BIN, NEON.MOD
+python3 dos/selftest_check.py www/drozerix_-_neon_techno.mod /tmp/dos   # alle Ansichten als PNG
+dos/package.sh /tmp/dos-site                            # ZIP, js-dos-Bündel, Seite
+```
+
+Auf dem PC: `RTRACK [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet). Nötig sind
+16 MB RAM (das Programm belegt etwa 10 MB), die Variable `BLASTER` und DOS im Real Mode:
+HIMEM.SYS ist in Ordnung, EMM386, QEMM oder eine Windows-DOS-Box nicht. Pattern-Tabelle,
+Oszilloskop, Spektrum und Amiga-Ansicht sind auf einen Pentium 133 ausgelegt; Mandelbrot,
+Würfel, Voxel und See rechnen dort nur wenige Bilder pro Sekunde. Die Musik läuft im Interrupt
+und stockt deshalb auch dann nicht. Details stehen in `dos/README.TXT`.
 
 ## Promo-Video
 
@@ -264,7 +316,7 @@ Voraussetzungen: cargo, ffmpeg, Python 3 mit Pillow und die DejaVu-Schriften.
 ## Framebuffer-Edition (`www-fb/`)
 
 Eine zweite Oberfläche, bei der **jedes Pixel in Rust gezeichnet wird**: Knöpfe, Schrift,
-Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel, Voxel-Landschaft, See und Pattern-Ansicht. Rust rendert in einen
+Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel, Voxel-Landschaft, See, Amiga-Demo und Pattern-Ansicht. Rust rendert in einen
 RGBA-Framebuffer im WASM-Speicher, JavaScript legt ihn per `putImageData` auf ein Canvas.
 Das JavaScript (`www-fb/index.html` und die mit der klassischen Edition geteilte Anbindung
 `www/rustvis.js`, die `build.sh` und die CI nach `www-fb/` kopieren) macht nur noch Folgendes:
@@ -282,6 +334,7 @@ Das JavaScript (`www-fb/index.html` und die mit der klassischen Edition geteilte
 | `src/vis_spec.rs` | Spektrum 2D mit Spektrogramm und 3D-Verlauf mit Floating Horizon |
 | `src/vis_cube.rs` | Würfel mit sechs Live-Flächen, perspektivisch korrekte Texturen |
 | `src/vis_voxel.rs` | Voxel-Landschaft aus dem Mandelbrot-Zoom mit Kameraflug |
+| `src/vis_amiga.rs` | Amiga-Demo: Copper-Bars, Sinus-Scroller, Logo, Sternenfeld |
 | `src/vis_lake.rs` | See aus Voxeln: Wellengleichung, angeregt von Bass und Takt |
 | `src/voxel_space.rs` | wiederverwendbarer Voxel-Space-Renderer für Höhenkarten (Kamera-Orbit, Strahlen pro Spalte, Dunst) |
 | `src/vis_ui.rs` | Knopfleiste, Eingabe, Seitenleiste mit Order-Liste und Pattern |

@@ -7,5 +7,6 @@
 23.04 30.72 3   CARDS/c4.png
 30.72 38.40 4   CARDS/c5.png
 38.40 46.08 5   CARDS/c6.png
-46.08 53.76 ui:1 CARDS/c7.png
-53.76 61.44 4   CARDS/end.png  last
+46.08 53.76 6   CARDS/c8.png
+53.76 61.44 ui:1 CARDS/c7.png
+61.44 69.12 4   CARDS/end.png  last

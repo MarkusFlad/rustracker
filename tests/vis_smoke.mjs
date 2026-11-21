@@ -41,7 +41,7 @@ const runJobs = () => {
 };
 
 const W = 1024, H = 640, nch = au.mp_num_channels(), n = Math.min(nch, 8), off = vi.vis_spec_offset();
-const views = [['oscilloscope', null], ['mandelbrot', 'v'], ['spectrum 2D', 'v'], ['spectrum 3D', '3'], ['cube', 'v'], ['voxel', 'v'], ['lake', 'v'], ['lake coarse', 'r']];
+const views = [['oscilloscope', null], ['mandelbrot', 'v'], ['spectrum 2D', 'v'], ['spectrum 3D', '3'], ['cube', 'v'], ['voxel', 'v'], ['lake', 'v'], ['lake coarse', 'r'], ['amiga', 'v']];
 let t = 0, frameT = 0;
 for (const [name, key] of views) {
   if (key) vi.vis_key(key.charCodeAt(0));

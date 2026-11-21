@@ -807,6 +807,14 @@ impl Player {
         }
     }
 
+    /// Number of sample slots of the loaded MOD (15 or 31).
+    ///
+    /// # Returns
+    /// The number of samples; sample `i`'s name is the 22 bytes at offset `20 + 30·i`.
+    pub fn num_samples(&self) -> usize {
+        self.num_samples
+    }
+
     /// A byte of the loaded MOD file, e.g. for the song title.
     ///
     /// # Arguments

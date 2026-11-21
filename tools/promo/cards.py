@@ -24,7 +24,8 @@ def glow_text(img, xy, text, f, fill, glow=10, anchor='la'):
     img.alpha_composite(layer)
     ImageDraw.Draw(img).text(xy, text, font=f, fill=fill + (255,), anchor=anchor)
 
-def lower_third(name, num, title, sub=None):
+def lower_third(name, num, title, sub=None, top=None):
+    """Caption box at the bottom left (or with its top edge at `top`)."""
     img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     ft, fk, fs = font(SANS_B, 58), font(MONO_B, 26), font(MONO, 30)
@@ -32,7 +33,7 @@ def lower_third(name, num, title, sub=None):
     sw = d.textlength(sub, font=fs) if sub else 0
     bw = int(max(tw, sw, 420)) + 110
     bh = 190 if sub else 150
-    x0, y0 = 90, H - 110 - bh
+    x0, y0 = 90, (H - 110 - bh if top is None else top)
     panel = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     ImageDraw.Draw(panel).rounded_rectangle((x0, y0, x0 + bw, y0 + bh), radius=14, fill=(4, 10, 8, 200))
     img.alpha_composite(panel)
@@ -94,6 +95,7 @@ lower_third('c3.png', 3, 'Mandelbrot-Zoom im Takt', 'jede Pattern-Position eine 
 lower_third('c4.png', 4, 'Sechs Ansichten auf einem Würfel', 'alle live, perspektivisch korrekt')
 lower_third('c5.png', 5, 'Das Fraktal als Voxel-Landschaft', 'Kameraflug um die Gipfel')
 lower_third('c6.png', 6, 'Ein See, den der Bass bewegt', 'echte Wellengleichung, Wellen überlagern sich')
-lower_third('c7.png', 7, 'Jedes Pixel in Rust gezeichnet', 'ohne Frameworks, ohne fremde Crates')
+lower_third('c7.png', 8, 'Jedes Pixel in Rust gezeichnet', 'ohne Frameworks, ohne fremde Crates')
+lower_third('c8.png', 7, 'Eine Verbeugung vor dem Amiga', 'Copper-Bars, Sinus-Scroller, Sternenfeld', top=330)  # keeps the scroller free
 end_card('end.png')
 print('ok')

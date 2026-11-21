@@ -427,7 +427,7 @@ function draw() {
   if (viewMode === 'mandel') drawMandel();
   else if (viewMode === 'spectrum') drawSpectrum();
   else if (viewMode === 'cube') drawCube();
-  else if (viewMode === 'voxel' || viewMode === 'lake') drawRust();
+  else if (viewMode in RUST_VIEW) drawRust();
   else drawOscilloscope();
 }
 
@@ -568,11 +568,11 @@ function showHud(v, info) {
     `<br>${info || '…'}` + (v.m ? `<br>Pos ${v.m.order} · Zeile ${String(Math.floor(v.rowF)).padStart(2, '0')} · Pegel ${(dir.inten * 100).toFixed(0)} %` : '');
 }
 
-// ---- voxel views (landscape and lake): drawn by the Rust renderer (src/vis.rs) in its own
+// ---- voxel views (landscape and lake) and the Amiga demo: drawn by the Rust renderer (src/vis.rs) in its own
 // instance of modplayer.wasm, the same code as in the framebuffer edition (glue: rustvis.js)
 const rcanvas = $('rustview'), rctx = rcanvas.getContext('2d');
 /** Rust view numbers (see view_frame in src/vis.rs). */
-const RUST_VIEW = { voxel: 4, lake: 5 };
+const RUST_VIEW = { voxel: 4, lake: 5, amiga: 6 };
 let rust = null;
 /** Voxel views: smooth surface instead of blocky voxels (the default). */
 let voxelFine = true;
@@ -592,7 +592,7 @@ async function initRust() {
   } catch (e) { $('msg').textContent = 'Voxel-Ansichten nicht möglich: ' + e.message; }
 }
 
-/** A voxel view: Rust draws it (with its own HUD) at device resolution into the canvas. */
+/** A Rust-drawn view: Rust draws it (with its own HUD) at device resolution into the canvas. */
 function drawRust() {
   if (!rust) return;
   const cssW = rcanvas.clientWidth, cssH = rcanvas.clientHeight;
@@ -605,32 +605,33 @@ function drawRust() {
   if (last && playing) showPosition(last);
 }
 
-const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel', 'lake'];
-const VIEW_NAME = { oscilloscope: 'Oszilloskop', mandel: 'Mandelbrot', spectrum: 'Spektrum', cube: 'Würfel', voxel: 'Voxel', lake: 'See' };
+const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel', 'lake', 'amiga'];
+const VIEW_NAME = { oscilloscope: 'Oszilloskop', mandel: 'Mandelbrot', spectrum: 'Spektrum', cube: 'Würfel', voxel: 'Voxel', lake: 'See', amiga: 'Amiga' };
 const VIEW_TITLE = { oscilloscope: 'Oszilloskop · Master L/R · XY · Kanäle', mandel: 'Mandelbrot-Zoom im Takt der Musik',
   spectrum: 'Spektrum · FFT (Rust, 4096 Punkte, Hann-Fenster) · Spektrogramm',
   cube: 'Würfel · Oszilloskop · XY · Spektrum 2D/3D · Noten · Mandelbrot',
   voxel: 'Voxel-Landschaft aus dem Mandelbrot-Zoom · Kameraflug um die Gipfel',
-  lake: 'See aus Voxeln · Bass und Takt erzeugen Wellen' };
+  lake: 'See aus Voxeln · Bass und Takt erzeugen Wellen',
+  amiga: 'Amiga-Demo · Copper-Bars · Sinus-Scroller · Sternenfeld' };
 /** Switches the view: shows its canvas and controls, starts the Mandelbrot engine on first use. */
 async function setView(mode) {
   viewMode = mode;
-  const md = mode === 'mandel', sm = mode === 'spectrum', vx = mode === 'voxel', lk = mode === 'lake';
+  const md = mode === 'mandel', sm = mode === 'spectrum', vx = mode === 'voxel', lk = mode === 'lake', am = mode === 'amiga';
   $('view').textContent = 'Ansicht: ' + VIEW_NAME[mode];
   $('viewTitle').textContent = VIEW_TITLE[mode];
   canvas.style.display = mode === 'oscilloscope' ? 'block' : 'none';
   mcanvas.style.display = md ? 'block' : 'none';
-  rcanvas.style.display = vx || lk ? 'block' : 'none';
+  rcanvas.style.display = vx || lk || am ? 'block' : 'none';
   $('spec').style.display = sm ? 'block' : 'none';
   $('cubeScene').style.display = mode === 'cube' ? 'block' : 'none';
   if (mode === 'cube') initCube();
-  $('mctl').style.display = md || sm || vx || lk || mode === 'cube' ? 'flex' : 'none';
+  $('mctl').style.display = md || sm || vx || lk || am || mode === 'cube' ? 'flex' : 'none';
   for (const b of document.querySelectorAll('#mctl .monly')) b.style.display = md ? '' : 'none';
   for (const b of document.querySelectorAll('#mctl .sonly')) b.style.display = sm ? '' : 'none';
   $('mPal').style.display = md || vx ? '' : 'none';
   $('vRes').style.display = vx || lk ? '' : 'none';
   $('mhud').style.display = md ? 'block' : 'none';
-  if (vx || lk) await initRust();
+  if (vx || lk || am) await initRust();
   if (md && !mandel) {
     try {
       const m = Mandel(mcanvas);

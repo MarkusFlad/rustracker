@@ -43,6 +43,7 @@ pub mod math;
 pub mod replayer;
 pub mod spectrum;
 pub mod vis;
+mod vis_amiga;
 mod vis_cube;
 mod vis_lake;
 mod vis_mandel;

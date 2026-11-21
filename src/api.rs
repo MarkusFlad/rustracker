@@ -17,7 +17,11 @@ use crate::replayer::{Player, MAX_CH};
 use crate::vis::Vis;
 
 /// Largest MOD file that can be loaded (bytes).
+#[cfg(not(dos))]
 pub const MOD_CAPACITY: usize = 4 * 1024 * 1024;
+/// The DOS build loads songs in place ([`mp_load_ptr`]) and needs no copy buffer.
+#[cfg(dos)]
+pub const MOD_CAPACITY: usize = 4;
 /// Most frames one `mp_render` call produces.
 pub const MAX_FRAMES: usize = 4096;
 
@@ -69,6 +73,24 @@ pub extern "C" fn mp_load(len: usize, sample_rate: f32) -> i32 {
         return -3;
     }
     player().load((&raw const MOD_BUF) as *const u8, len, sample_rate)
+}
+
+/// Parses a MOD that stays where it is (the DOS build loads songs straight into memory) and
+/// starts at position 0.
+///
+/// # Arguments
+/// * `m` - start of the MOD file; it must stay valid and unchanged while it plays
+/// * `len` - length of the file in bytes
+/// * `sample_rate` - output sample rate in Hz
+///
+/// # Returns
+/// The channel count (> 0) or an error code like [`mp_load`].
+///
+/// # Safety
+/// `m` must point to `len` readable bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mp_load_ptr(m: *const u8, len: usize, sample_rate: f32) -> i32 {
+    player().load(m, len, sample_rate)
 }
 
 /// Renders the next frames and appends their mono mix to the spectrum ring.
@@ -321,7 +343,8 @@ pub extern "C" fn vis_frame(now: f64, w: i32, h: i32, css: f64) -> *const u32 {
 /// [`Vis::view_frame`]).
 ///
 /// # Arguments
-/// * `view` - 0 oscilloscope, 1 Mandelbrot, 2 spectrum, 3 cube, 4 voxel landscape, 5 lake
+/// * `view` - 0 oscilloscope, 1 Mandelbrot, 2 spectrum, 3 cube, 4 voxel landscape, 5 lake,
+///   6 Amiga demo
 /// * `now` - time in ms (performance.now())
 /// * `w` - wanted width in pixels
 /// * `h` - wanted height; clamped to the buffer, see [`vis_width`]/[`vis_height`]

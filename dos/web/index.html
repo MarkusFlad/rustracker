@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rustracker für DOS</title>
+<link rel="stylesheet" href="https://v8.js-dos.com/latest/js-dos.css">
+<script src="https://v8.js-dos.com/latest/js-dos.js"></script>
+<style>
+  body { margin: 0; background: #05080a; color: #9fe8b8; font: 15px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  main { max-width: 980px; margin: 0 auto; padding: 18px; }
+  h1 { color: #ffb347; font-size: 22px; margin: 0 0 6px; }
+  a { color: #7fd7ff; }
+  #dos { width: 100%; aspect-ratio: 4 / 3; background: #000; border: 1px solid #1f4d33; }
+  kbd { border: 1px solid #2f6b47; border-radius: 3px; padding: 0 4px; color: #d8ffe6; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Rustracker für DOS</h1>
+  <p>Die DOS-Ausgabe des <a href="../">Rustrackers</a> in DOSBox (js-dos), mit Sound Blaster 16 und VGA 320×200.
+     Auf einem echten PC läuft dieselbe Datei: <a href="rtrack-dos.zip">rtrack-dos.zip</a>
+     (RTRACK.COM, RTRACK.BIN, NEON.MOD, README.TXT).</p>
+  <div id="dos"></div>
+  <div class="row">
+    <span><kbd>V</kbd> Ansicht</span><span><kbd>Leertaste</kbd> Pause</span><span><kbd>S</kbd> Stopp</span>
+    <span><kbd>←</kbd>/<kbd>→</kbd> Position</span><span><kbd>3</kbd> Spektrum 2D/3D</span>
+    <span><kbd>P</kbd> Palette</span><span><kbd>R</kbd> Voxel grob/fein</span><span><kbd>F</kbd> nur Ansicht</span>
+    <span><kbd>Esc</kbd> Ende</span>
+  </div>
+  <p>Ton startet erst nach einem Klick in das Bild (Regel der Browser).
+     Die Geschwindigkeit hängt vom Rechner ab, auf dem der Browser läuft; ein Pentium 133 ist eher langsamer.</p>
+</main>
+<script>
+  Dos(document.getElementById("dos"), { url: "rtrack.jsdos", autoStart: true, kiosk: true });
+</script>
+</body>
+</html>

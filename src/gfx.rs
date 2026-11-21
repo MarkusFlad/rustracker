@@ -365,6 +365,7 @@ impl Surface {
     /// * `y1` - end row
     /// * `c` - colour (RGBA as from [`rgb`])
     /// * `a` - opacity, 0 (invisible) ..= 256 (opaque)
+    #[cfg(not(dos))]
     pub fn line(&self, x0: f32, y0: f32, x1: f32, y1: f32, c: u32, a: u32) {
         let dx = x1 - x0;
         let dy = y1 - y0;
@@ -388,6 +389,49 @@ impl Surface {
             i += 1;
         }
     }
+    /// Draws a straight line (DOS build): the same pixels as the float version up to rounding,
+    /// but stepped in 16.16 fixed point, since every float-to-integer conversion is slow on
+    /// the Pentium's FPU. Endpoints are limited to +-16000 pixels.
+    ///
+    /// # Arguments
+    /// * `x0` - start column
+    /// * `y0` - start row
+    /// * `x1` - end column
+    /// * `y1` - end row
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - opacity, 0 ..= 256
+    #[cfg(dos)]
+    pub fn line(&self, x0: f32, y0: f32, x1: f32, y1: f32, c: u32, a: u32) {
+        self.line_fix(fix16(x0), fix16(y0), fix16(x1), fix16(y1), c, a);
+    }
+    /// [`Surface::line`] with endpoints in 16.16 fixed point (DOS build).
+    ///
+    /// # Arguments
+    /// * `fx0` - start column * 65536
+    /// * `fy0` - start row * 65536
+    /// * `fx1` - end column * 65536
+    /// * `fy1` - end row * 65536
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - opacity, 0 ..= 256
+    #[cfg(dos)]
+    fn line_fix(&self, fx0: i32, fy0: i32, fx1: i32, fy1: i32, c: u32, a: u32) {
+        let dx = fx1 - fx0;
+        let dy = fy1 - fy0;
+        let adx = if dx < 0 { 0 - dx } else { dx };
+        let ady = if dy < 0 { 0 - dy } else { dy };
+        let n = (if adx > ady { adx } else { ady } >> 16) + 1;
+        let sx = dx / n;
+        let sy = dy / n;
+        let mut x = fx0 + 32768;
+        let mut y = fy0 + 32768;
+        let mut i = 0;
+        while i <= n {
+            self.blend(x >> 16, y >> 16, c, a);
+            x += sx;
+            y += sy;
+            i += 1;
+        }
+    }
     /// A phosphor trace: soft wide glow plus a bright core.
     ///
     /// # Arguments
@@ -397,6 +441,7 @@ impl Surface {
     /// * `y1` - end row
     /// * `c` - colour (RGBA as from [`rgb`])
     /// * `thick` - glow radius in pixels
+    #[cfg(not(dos))]
     pub fn trace_line(&self, x0: f32, y0: f32, x1: f32, y1: f32, c: u32, thick: i32) {
         let mut o = 0 - thick;
         while o <= thick {
@@ -407,6 +452,30 @@ impl Surface {
             o += 1;
         }
         self.line(x0, y0, x1, y1, c, 256);
+    }
+    /// A phosphor trace (DOS build): as the float version, with the endpoints converted to
+    /// fixed point only once for all its lines.
+    ///
+    /// # Arguments
+    /// * `x0` - start column
+    /// * `y0` - start row
+    /// * `x1` - end column
+    /// * `y1` - end row
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `thick` - glow radius in pixels
+    #[cfg(dos)]
+    pub fn trace_line(&self, x0: f32, y0: f32, x1: f32, y1: f32, c: u32, thick: i32) {
+        let (ax, ay, bx, by) = (fix16(x0), fix16(y0), fix16(x1), fix16(y1));
+        let mut o = 0 - thick;
+        while o <= thick {
+            if o != 0 {
+                let f = o << 16;
+                self.line_fix(ax, ay + f, bx, by + f, c, 46);
+                self.line_fix(ax + f, ay, bx + f, by, c, 30);
+            }
+            o += 1;
+        }
+        self.line_fix(ax, ay, bx, by, c, 256);
     }
 
     /// Draws one character of the built-in 5x7 font. Lowercase is drawn as uppercase; 0x80..0x83
@@ -478,7 +547,13 @@ impl Surface {
 }
 
 /// Maps a byte onto the font's code range (see [`Surface::glyph`]).
-fn glyph_code(ch: u32) -> u32 {
+///
+/// # Arguments
+/// * `ch` - character code
+///
+/// # Returns
+/// The glyph code, `font::FIRST ..` (unknown bytes as '?').
+pub fn glyph_code(ch: u32) -> u32 {
     let mut code = ch;
     if code >= 97 && code <= 122 {
         code -= 32; // lowercase -> uppercase
@@ -622,4 +697,23 @@ impl TextBuf {
             self.num(o as u32, 1, 48);
         }
     }
+}
+
+/// A coordinate in 16.16 fixed point, limited to +-16000 (DOS line drawing).
+///
+/// # Arguments
+/// * `v` - coordinate in pixels
+///
+/// # Returns
+/// `v * 65536`, rounded towards zero
+#[cfg(dos)]
+fn fix16(v: f32) -> i32 {
+    let c = if v > 16000.0 {
+        16000.0
+    } else if v < -16000.0 {
+        -16000.0
+    } else {
+        v
+    };
+    (c * 65536.0) as i32
 }
