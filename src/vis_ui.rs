@@ -9,9 +9,15 @@ use crate::vis::*;
 impl Vis {
     // ------------------------------------------------------------------ input
 
-    /// A click or tap at framebuffer pixel (x, y) of the last frame. Returns the action
-    /// JS has to carry out (`ACT_*`, argument in [`Vis::action_arg`]); view, 3D and
-    /// palette changes are handled here and return `ACT_NONE`.
+    /// A click or tap. View, 3D and palette buttons are handled here.
+    ///
+    /// # Arguments
+    /// * `x` - column in framebuffer pixels of the last frame
+    /// * `y` - row in framebuffer pixels
+    ///
+    /// # Returns
+    /// The action for JS: one of the `ACT_*` constants (argument in [`Vis::action_arg`]);
+    /// `ACT_NONE` if nothing is to be done.
     pub fn pointer(&mut self, x: i32, y: i32) -> i32 {
         let i = self.button_at(x, y);
         if i >= 0 {
@@ -91,7 +97,15 @@ impl Vis {
         ACT_NONE
     }
 
-    /// Keyboard: space play/pause, s stop, o open, v view, 3 2D/3D, p palette, l loop, f fullscreen.
+    /// A key press: space play/pause, s stop, o open, v view, 3 2D/3D, p palette, l loop, f
+    /// fullscreen (upper or lower case).
+    ///
+    /// # Arguments
+    /// * `code` - character code of the key
+    ///
+    /// # Returns
+    /// The action for JS: one of the `ACT_*` constants (argument in [`Vis::action_arg`]);
+    /// `ACT_NONE` if nothing is to be done.
     pub fn key(&mut self, code: u32) -> i32 {
         if code == 32 {
             return ACT_PLAY;
@@ -120,6 +134,9 @@ impl Vis {
         ACT_NONE
     }
     /// JS reports the browser's fullscreen state (e.g. after Escape).
+    ///
+    /// # Arguments
+    /// * `on` - `true` in fullscreen
     pub fn set_fullscreen(&mut self, on: bool) {
         self.fullscreen = on;
     }

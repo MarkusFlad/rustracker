@@ -30,8 +30,11 @@ pub struct Fft {
 }
 
 impl Fft {
-    /// An FFT without a size; call [`Fft::setup`] before use. `const`, so it can
-    /// initialise a static.
+    /// An FFT without a size; call [`Fft::setup`] before use. `const`, so it can initialise a
+    /// static.
+    ///
+    /// # Returns
+    /// An unconfigured FFT ([`Fft::size`] is 0).
     pub const fn empty() -> Fft {
         Fft {
             n: 0,
@@ -44,14 +47,23 @@ impl Fft {
         }
     }
 
-    /// The configured transform size (0 before [`Fft::setup`]).
+    /// The configured transform size.
+    ///
+    /// # Returns
+    /// Number of points, 0 before [`Fft::setup`].
     pub fn size(&self) -> usize {
         self.n
     }
 
-    /// Prepares twiddle factors and the Hann window for size `n` (a power of two
-    /// from 16 to [`FFT_MAX`]). Returns false for an unsupported size; calling it
-    /// again with the current size costs nothing.
+    /// Prepares twiddle factors and the Hann window. Calling it again with the current size costs
+    /// nothing.
+    ///
+    /// # Arguments
+    /// * `n` - transform size: a power of two from 16 to [`FFT_MAX`]
+    ///
+    /// # Returns
+    /// `true` if the FFT is ready for `n` points, `false` for an unsupported size (the previous
+    /// setup is kept).
     pub fn setup(&mut self, n: usize) -> bool {
         if n < 16 || n > FFT_MAX || (n & (n - 1)) != 0 {
             return false;
@@ -75,7 +87,10 @@ impl Fft {
         true
     }
 
-    /// Loads `n` real samples from a linear buffer, applying the Hann window.
+    /// Loads `size()` real samples from a linear buffer, applying the Hann window.
+    ///
+    /// # Arguments
+    /// * `samples` - first of the samples, oldest first
     ///
     /// # Safety
     /// `samples` must point to at least `size()` readable f32 values.
@@ -89,9 +104,13 @@ impl Fft {
         }
     }
 
-    /// Loads the newest `n` samples of a ring buffer (`ring_len` entries, the newest
-    /// sample just before index `ring_pos`), applying the Hann window. Does nothing
+    /// Loads the newest `size()` samples of a ring buffer, applying the Hann window. Does nothing
     /// if the ring is shorter than the transform.
+    ///
+    /// # Arguments
+    /// * `ring` - start of the ring buffer
+    /// * `ring_len` - number of entries in the ring
+    /// * `ring_pos` - write position: the newest sample is just before this index
     ///
     /// # Safety
     /// `ring` must point to `ring_len` readable f32 values.
@@ -111,17 +130,29 @@ impl Fft {
     }
 
     /// Sets one complex input value directly (no window).
+    ///
+    /// # Arguments
+    /// * `i` - index, `0 .. size()`
+    /// * `re` - real part
+    /// * `im` - imaginary part
     pub fn set_input(&mut self, i: usize, re: f32, im: f32) {
         self.re[i] = re;
         self.im[i] = im;
     }
 
     /// One complex output bin of the last [`Fft::transform`].
+    ///
+    /// # Arguments
+    /// * `i` - bin index, `0 .. size()`
+    ///
+    /// # Returns
+    /// `(re, im)` of bin `i`.
     pub fn output(&self, i: usize) -> (f32, f32) {
         (self.re[i], self.im[i])
     }
 
-    /// In-place forward FFT of the loaded input.
+    /// In-place forward FFT of the loaded input; the result is read with [`Fft::output`] or
+    /// [`Fft::compute_power`].
     pub fn transform(&mut self) {
         self.bit_reverse();
         let mut len = 2;
@@ -186,8 +217,8 @@ impl Fft {
         self.im[a] += xi;
     }
 
-    /// Fills [`Fft::power`] (bins `0 ..= n/2`) from the last transform of a
-    /// Hann-windowed real signal: amplitude², so a full-scale sine is about 1.0.
+    /// Fills [`Fft::power`] (bins `0 ..= size()/2`) from the last transform of a Hann-windowed real
+    /// signal: amplitude², so a full-scale sine is about 1.0.
     pub fn compute_power(&mut self) {
         let n = self.n;
         // |X|·2/Σw with Σw = n/2 for the Hann window -> amplitude; we store amplitude²
@@ -201,8 +232,13 @@ impl Fft {
         }
     }
 
-    /// Power spectrum of the newest `n` samples of a ring buffer
-    /// ([`Fft::load_ring`] + [`Fft::transform`] + [`Fft::compute_power`]).
+    /// Power spectrum of the newest `size()` samples of a ring buffer ([`Fft::load_ring`] +
+    /// [`Fft::transform`] + [`Fft::compute_power`]); the result is in [`Fft::power`].
+    ///
+    /// # Arguments
+    /// * `ring` - start of the ring buffer
+    /// * `ring_len` - number of entries in the ring
+    /// * `ring_pos` - write position: the newest sample is just before this index
     ///
     /// # Safety
     /// `ring` must point to `ring_len` readable f32 values.
@@ -215,7 +251,10 @@ impl Fft {
         self.compute_power();
     }
 
-    /// Power spectrum of `n` samples from a linear buffer.
+    /// Power spectrum of `size()` samples from a linear buffer; the result is in [`Fft::power`].
+    ///
+    /// # Arguments
+    /// * `samples` - first of the samples, oldest first
     ///
     /// # Safety
     /// `samples` must point to at least `size()` readable f32 values.

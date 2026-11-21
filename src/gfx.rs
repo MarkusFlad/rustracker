@@ -8,23 +8,57 @@
 use crate::font;
 use crate::math::{iclamp, imax, imin};
 
-/// Opaque colour from 8-bit red, green and blue.
+/// Builds an opaque colour.
+///
+/// # Arguments
+/// * `r` - red, 0..255
+/// * `g` - green, 0..255
+/// * `b` - blue, 0..255
+///
+/// # Returns
+/// The colour as u32 (bytes R, G, B, A in memory).
 pub const fn rgb(r: u32, g: u32, b: u32) -> u32 {
     0xff00_0000 | (b << 16) | (g << 8) | r
 }
-/// Red component (0..255).
+/// Red component of a colour.
+///
+/// # Arguments
+/// * `c` - colour
+///
+/// # Returns
+/// 0..255.
 pub fn red(c: u32) -> u32 {
     c & 255
 }
-/// Green component (0..255).
+/// Green component of a colour.
+///
+/// # Arguments
+/// * `c` - colour
+///
+/// # Returns
+/// 0..255.
 pub fn green(c: u32) -> u32 {
     (c >> 8) & 255
 }
-/// Blue component (0..255).
+/// Blue component of a colour.
+///
+/// # Arguments
+/// * `c` - colour
+///
+/// # Returns
+/// 0..255.
 pub fn blue(c: u32) -> u32 {
     (c >> 16) & 255
 }
-/// Mix two colours, t = 0..256 (0 = a, 256 = b).
+/// Linear blend of two colours.
+///
+/// # Arguments
+/// * `a` - first colour
+/// * `b` - second colour
+/// * `t` - weight of `b`, 0 ..= 256
+///
+/// # Returns
+/// `a` for t = 0, `b` for t = 256, opaque.
 pub fn mix(a: u32, b: u32, t: u32) -> u32 {
     let u = 256 - t;
     rgb(
@@ -33,11 +67,25 @@ pub fn mix(a: u32, b: u32, t: u32) -> u32 {
         (blue(a) * u + blue(b) * t) >> 8,
     )
 }
-/// Scale a colour's brightness, k = 0..256.
+/// Scales a colour's brightness.
+///
+/// # Arguments
+/// * `c` - colour
+/// * `k` - factor, 0 (black) ..= 256 (unchanged)
+///
+/// # Returns
+/// The darkened colour, opaque.
 pub fn dim(c: u32, k: u32) -> u32 {
     rgb((red(c) * k) >> 8, (green(c) * k) >> 8, (blue(c) * k) >> 8)
 }
-/// Additive blend of two colours, saturating at white.
+/// Additive blend of two colours, saturating at white (for glow effects).
+///
+/// # Arguments
+/// * `a` - first colour
+/// * `b` - second colour
+///
+/// # Returns
+/// The per-component sum, at most 255 each.
 pub fn add(a: u32, b: u32) -> u32 {
     let r = red(a) + red(b);
     let g = green(a) + green(b);
@@ -85,12 +133,29 @@ pub struct Surface {
 }
 
 impl Surface {
-    /// A whole framebuffer of `w` x `h` pixels at `p` (the caller guarantees the memory).
+    /// A surface covering a whole framebuffer (the caller guarantees the memory).
+    ///
+    /// # Arguments
+    /// * `p` - first pixel; `w`·`h` pixels must be writable
+    /// * `w` - width in pixels
+    /// * `h` - height in pixels
+    ///
+    /// # Returns
+    /// The surface, stride = `w`.
     pub fn new(p: *mut u32, w: i32, h: i32) -> Surface {
         Surface { p, w, h, stride: w }
     }
 
-    /// A clipped window (x, y, w, h) of this surface; empty if it lies outside.
+    /// A clipped window of this surface, for drawing in local coordinates.
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    /// * `w` - width in pixels
+    /// * `h` - height in pixels
+    ///
+    /// # Returns
+    /// The window; empty (w or h = 0) if it lies outside.
     pub fn sub(&self, x: i32, y: i32, w: i32, h: i32) -> Surface {
         let x0 = iclamp(x, 0, self.w);
         let y0 = iclamp(y, 0, self.h);
@@ -109,7 +174,14 @@ impl Surface {
     fn at(&self, x: i32, y: i32) -> *mut u32 {
         (self.p as usize + ((y * self.stride + x) as usize) * 4) as *mut u32
     }
-    /// Pixel (x, y), 0 outside.
+    /// Reads a pixel.
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    ///
+    /// # Returns
+    /// Its colour, or 0 outside the surface.
     #[inline(always)]
     pub fn get(&self, x: i32, y: i32) -> u32 {
         if x < 0 || y < 0 || x >= self.w || y >= self.h {
@@ -117,7 +189,12 @@ impl Surface {
         }
         unsafe { *self.at(x, y) }
     }
-    /// Sets pixel (x, y) unless it is outside.
+    /// Sets a pixel (ignored outside the surface).
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    /// * `c` - colour (RGBA as from [`rgb`])
     #[inline(always)]
     pub fn set(&self, x: i32, y: i32, c: u32) {
         if x < 0 || y < 0 || x >= self.w || y >= self.h {
@@ -127,7 +204,13 @@ impl Surface {
             *self.at(x, y) = c;
         }
     }
-    /// Blend colour c over the pixel, a = 0..256.
+    /// Blends a colour over a pixel (ignored outside the surface).
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - opacity, 0 (invisible) ..= 256 (opaque)
     #[inline(always)]
     pub fn blend(&self, x: i32, y: i32, c: u32, a: u32) {
         if x < 0 || y < 0 || x >= self.w || y >= self.h || a == 0 {
@@ -138,7 +221,13 @@ impl Surface {
             *p = if a >= 256 { c } else { mix(*p, c, a) };
         }
     }
-    /// Add colour c (scaled by a = 0..256) to the pixel: glow.
+    /// Adds a colour to a pixel, saturating: glow (ignored outside the surface).
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - strength, 0 ..= 256
     #[inline(always)]
     pub fn glow(&self, x: i32, y: i32, c: u32, a: u32) {
         if x < 0 || y < 0 || x >= self.w || y >= self.h || a == 0 {
@@ -150,7 +239,14 @@ impl Surface {
         }
     }
 
-    /// Fills a rectangle.
+    /// Fills a rectangle (clipped).
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    /// * `w` - width in pixels
+    /// * `h` - height in pixels
+    /// * `c` - colour (RGBA as from [`rgb`])
     pub fn fill(&self, x: i32, y: i32, w: i32, h: i32, c: u32) {
         let s = self.sub(x, y, w, h);
         let mut yy = 0;
@@ -166,7 +262,15 @@ impl Surface {
             yy += 1;
         }
     }
-    /// Blends a rectangle with opacity `a` (0..256).
+    /// Blends a rectangle over the surface (clipped).
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    /// * `w` - width in pixels
+    /// * `h` - height in pixels
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - opacity, 0 (invisible) ..= 256 (opaque)
     pub fn fill_a(&self, x: i32, y: i32, w: i32, h: i32, c: u32, a: u32) {
         let s = self.sub(x, y, w, h);
         let mut yy = 0;
@@ -180,10 +284,20 @@ impl Surface {
         }
     }
     /// Fills the whole surface.
+    ///
+    /// # Arguments
+    /// * `c` - colour (RGBA as from [`rgb`])
     pub fn clear(&self, c: u32) {
         self.fill(0, 0, self.w, self.h, c);
     }
-    /// Horizontal line from x0 to x1 (inclusive) with opacity `a`.
+    /// Horizontal line (clipped).
+    ///
+    /// # Arguments
+    /// * `x0` - first column
+    /// * `x1` - last column (inclusive)
+    /// * `y` - row
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - opacity, 0 (invisible) ..= 256 (opaque)
     pub fn hline(&self, x0: i32, x1: i32, y: i32, c: u32, a: u32) {
         let mut x = x0;
         while x <= x1 {
@@ -191,7 +305,14 @@ impl Surface {
             x += 1;
         }
     }
-    /// Vertical line from y0 to y1 (inclusive) with opacity `a`.
+    /// Vertical line (clipped).
+    ///
+    /// # Arguments
+    /// * `x` - column
+    /// * `y0` - first row
+    /// * `y1` - last row (inclusive)
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - opacity, 0 (invisible) ..= 256 (opaque)
     pub fn vline(&self, x: i32, y0: i32, y1: i32, c: u32, a: u32) {
         let mut y = y0;
         while y <= y1 {
@@ -199,14 +320,28 @@ impl Surface {
             y += 1;
         }
     }
-    /// One pixel wide rectangle outline with opacity `a`.
+    /// One pixel wide rectangle outline (clipped).
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    /// * `w` - width in pixels
+    /// * `h` - height in pixels
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - opacity, 0 (invisible) ..= 256 (opaque)
     pub fn rect(&self, x: i32, y: i32, w: i32, h: i32, c: u32, a: u32) {
         self.hline(x, x + w - 1, y, c, a);
         self.hline(x, x + w - 1, y + h - 1, c, a);
         self.vline(x, y + 1, y + h - 2, c, a);
         self.vline(x + w - 1, y + 1, y + h - 2, c, a);
     }
-    /// A grid of 8 x 4 cells plus a frame, in the oscilloscope style.
+    /// Oscilloscope-style grid: 8 x 4 faint cells plus a frame, in phosphor green.
+    ///
+    /// # Arguments
+    /// * `x` - column, 0 = left edge
+    /// * `y` - row, 0 = top edge
+    /// * `w` - width in pixels
+    /// * `h` - height in pixels
     pub fn grid(&self, x: i32, y: i32, w: i32, h: i32) {
         let mut i = 1;
         while i < 8 {
@@ -221,7 +356,15 @@ impl Surface {
         self.rect(x, y, w, h, PHOSPHOR, 64);
     }
 
-    /// Line with sub-pixel end points, drawn as a DDA; `a` is the opacity (0..256).
+    /// Line with sub-pixel end points, drawn as a DDA (clipped).
+    ///
+    /// # Arguments
+    /// * `x0` - start column
+    /// * `y0` - start row
+    /// * `x1` - end column
+    /// * `y1` - end row
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `a` - opacity, 0 (invisible) ..= 256 (opaque)
     pub fn line(&self, x0: f32, y0: f32, x1: f32, y1: f32, c: u32, a: u32) {
         let dx = x1 - x0;
         let dy = y1 - y0;
@@ -246,6 +389,14 @@ impl Surface {
         }
     }
     /// A phosphor trace: soft wide glow plus a bright core.
+    ///
+    /// # Arguments
+    /// * `x0` - start column
+    /// * `y0` - start row
+    /// * `x1` - end column
+    /// * `y1` - end row
+    /// * `c` - colour (RGBA as from [`rgb`])
+    /// * `thick` - glow radius in pixels
     pub fn trace_line(&self, x0: f32, y0: f32, x1: f32, y1: f32, c: u32, thick: i32) {
         let mut o = 0 - thick;
         while o <= thick {
@@ -258,9 +409,15 @@ impl Surface {
         self.line(x0, y0, x1, y1, c, 256);
     }
 
-    /// Draw one glyph (byte) at (x, y), scale = pixel size of one font dot.
-    /// Lowercase is drawn as uppercase; 0x80..0x83 are play, pause, stop and a dot,
-    /// 0xc8 is the U umlaut; unknown bytes become '?'.
+    /// Draws one character of the built-in 5x7 font. Lowercase is drawn as uppercase; 0x80..0x83
+    /// are play, pause, stop and a dot, 0xc8 is the U umlaut; unknown bytes become '?'.
+    ///
+    /// # Arguments
+    /// * `x` - left edge
+    /// * `y` - top edge
+    /// * `ch` - character code
+    /// * `scale` - pixels per font dot
+    /// * `c` - colour (RGBA as from [`rgb`])
     pub fn glyph(&self, x: i32, y: i32, ch: u32, scale: i32, c: u32) {
         let base = ((glyph_code(ch) - font::FIRST) * 7) as usize;
         let mut r = 0;
@@ -276,7 +433,17 @@ impl Surface {
             r += 1;
         }
     }
-    /// Text from a byte string literal; returns the x after the text.
+    /// Draws a byte string literal.
+    ///
+    /// # Arguments
+    /// * `x` - left edge
+    /// * `y` - top edge
+    /// * `s` - the text
+    /// * `scale` - pixels per font dot (a character is 6·scale wide)
+    /// * `c` - colour (RGBA as from [`rgb`])
+    ///
+    /// # Returns
+    /// The x position after the text.
     pub fn text<const N: usize>(&self, x: i32, y: i32, s: &[u8; N], scale: i32, c: u32) -> i32 {
         let mut i = 0;
         let mut xx = x;
@@ -287,7 +454,17 @@ impl Surface {
         }
         xx
     }
-    /// Text from a [`TextBuf`]; returns the x after the text.
+    /// Draws the text of a [`TextBuf`].
+    ///
+    /// # Arguments
+    /// * `x` - left edge
+    /// * `y` - top edge
+    /// * `t` - the text
+    /// * `scale` - pixels per font dot (a character is 6·scale wide)
+    /// * `c` - colour (RGBA as from [`rgb`])
+    ///
+    /// # Returns
+    /// The x position after the text.
     pub fn text_buf(&self, x: i32, y: i32, t: &TextBuf, scale: i32, c: u32) -> i32 {
         let mut i = 0;
         let mut xx = x;
@@ -331,6 +508,9 @@ const HEX: &[u8; 16] = b"0123456789ABCDEF";
 
 impl TextBuf {
     /// An empty text.
+    ///
+    /// # Returns
+    /// A text with no characters.
     pub const fn new() -> TextBuf {
         TextBuf { b: [0; 96], n: 0 }
     }
@@ -338,7 +518,10 @@ impl TextBuf {
     pub fn clear(&mut self) {
         self.n = 0;
     }
-    /// Appends one byte.
+    /// Appends one character (dropped when the text is full).
+    ///
+    /// # Arguments
+    /// * `c` - character code
     pub fn ch(&mut self, c: u8) {
         if self.n < 96 {
             self.b[self.n] = c;
@@ -346,6 +529,9 @@ impl TextBuf {
         }
     }
     /// Appends a byte string literal.
+    ///
+    /// # Arguments
+    /// * `s` - the bytes to append
     pub fn s<const N: usize>(&mut self, s: &[u8; N]) {
         let mut i = 0;
         while i < N {
@@ -353,7 +539,12 @@ impl TextBuf {
             i += 1;
         }
     }
-    /// Unsigned number, at least `width` digits, padded with `pad`.
+    /// Appends an unsigned decimal number.
+    ///
+    /// # Arguments
+    /// * `v` - the number
+    /// * `width` - minimum number of characters
+    /// * `pad` - character used to pad on the left, e.g. b'0' or b' '
     pub fn num(&mut self, v: u32, width: usize, pad: u8) {
         let mut d = [0u8; 10];
         let mut n = 0;
@@ -372,7 +563,11 @@ impl TextBuf {
             self.ch(d[n]);
         }
     }
-    /// The lowest `digits` hex digits of `v`, upper case.
+    /// Appends the lowest hex digits of a number, upper case.
+    ///
+    /// # Arguments
+    /// * `v` - the number
+    /// * `digits` - number of digits
     pub fn hex(&mut self, v: u32, digits: u32) {
         let mut i = digits;
         while i > 0 {
@@ -380,7 +575,10 @@ impl TextBuf {
             self.ch(HEX[((v >> (i * 4)) & 15) as usize]);
         }
     }
-    /// Fixed point number with one decimal.
+    /// Appends a number with one decimal, e.g. "-12.5".
+    ///
+    /// # Arguments
+    /// * `v` - the number (rounded to one decimal)
     pub fn dec1(&mut self, v: f64) {
         let neg = v < 0.0;
         let a = if neg { 0.0 - v } else { v };
@@ -392,7 +590,10 @@ impl TextBuf {
         self.ch(46);
         self.ch(48 + (t % 10) as u8);
     }
-    /// Note name of a ProTracker period ("C-2"), "---" for 0.
+    /// Appends the note name of a ProTracker period, e.g. "C-2".
+    ///
+    /// # Arguments
+    /// * `period` - Amiga period; 0 appends "---"
     pub fn note(&mut self, period: u32) {
         if period == 0 {
             self.s(b"---");
@@ -403,7 +604,10 @@ impl TextBuf {
         self.ch(NOTE_NAMES[(i % 12) * 2 + 1]);
         self.ch(49 + (i / 12) as u8);
     }
-    /// Note name for a MIDI note number ("E4").
+    /// Appends the name of a MIDI note, e.g. "E4" or "C#3".
+    ///
+    /// # Arguments
+    /// * `m` - MIDI note number (69 = A4)
     pub fn midi(&mut self, m: i32) {
         let k = ((m % 12) + 12) % 12;
         self.ch(NOTE_NAMES[(k * 2) as usize]);

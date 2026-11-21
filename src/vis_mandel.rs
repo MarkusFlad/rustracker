@@ -274,12 +274,19 @@ impl Vis {
     // finished rows to `mb_back_ptr` and reports them with `mb_rows`. A newer generation
     // (new view) makes late results of an older one be ignored.
 
-    /// Switches between the Web Workers (`n` > 0) and the built-in scalar renderer.
+    /// Switches between the Web Workers and the built-in scalar renderer; the current picture is
+    /// restarted.
+    ///
+    /// # Arguments
+    /// * `n` - number of workers; 0 = render on the main thread
     pub fn mb_set_workers(&mut self, n: i32) {
         self.workers = n > 0;
         self.b_active = false;
     }
-    /// Returns the generation of a job that still has to be handed out (0 = none).
+    /// Hands out the current job, once.
+    ///
+    /// # Returns
+    /// Its generation (> 0), or 0 if there is nothing new to hand out.
     pub fn mb_take(&mut self) -> u32 {
         if self.workers && self.b_active && !self.job_taken {
             self.job_taken = true;
@@ -287,12 +294,20 @@ impl Vis {
         }
         0
     }
-    /// Generation of the current job.
+    /// Generation of the current job; results of other generations are outdated.
+    ///
+    /// # Returns
+    /// The generation.
     pub fn mb_gen(&self) -> u32 {
         self.job_gen
     }
-    /// Job parameter `i`: 0 re0 (left), 1 im0 (top), 2 step per pixel, 3 width (= stride),
-    /// 4 height, 5 maximum iterations.
+    /// A parameter of the current job.
+    ///
+    /// # Arguments
+    /// * `i` - 0 re0 (left), 1 im0 (top), 2 step per pixel, 3 width (= stride, multiple of 8), 4 height, 5 maximum iterations
+    ///
+    /// # Returns
+    /// The value (integers as f64).
     pub fn mb_param(&self, i: i32) -> f64 {
         if i == 0 {
             self.b_re0
@@ -308,11 +323,19 @@ impl Vis {
             self.b_maxit as f64
         }
     }
-    /// Where the rows of the current job go (palette indices, `0xffff_ffff` = inside).
+    /// Where the rows of the current job go.
+    ///
+    /// # Returns
+    /// Pointer to width·height u32 palette indices (`0xffff_ffff` = inside the set).
     pub fn mb_back_ptr(&mut self) -> *mut u32 {
         ((&raw mut self.mb) as usize + (1 - self.mb_front) * MB_MAX * 4) as *mut u32
     }
-    /// `rows` rows of job `gen` have been written into the back buffer.
+    /// Rows of a job have been written into the back buffer; when all are there the picture is
+    /// shown.
+    ///
+    /// # Arguments
+    /// * `gen` - generation of the job (others are ignored)
+    /// * `rows` - number of rows written
     pub fn mb_rows(&mut self, gen: u32, rows: i32) {
         if gen != self.job_gen || !self.b_active {
             return;

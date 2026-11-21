@@ -13,31 +13,42 @@ kompiliert und spielt im Browser über ein AudioWorklet ab. Dazu gibt es ein Osz
 
 ## Starten
 
+Ausprobieren geht am schnellsten über die Live-Demos oben. Lokal:
+
 ```sh
-./build.sh          # baut modplayer.wasm und startet http://localhost:8080
+./build.sh          # baut die WASM-Dateien und startet http://localhost:8080
 ```
 
-Eine fertige `www/modplayer.wasm` liegt schon bei. Wenn du sie nur starten willst:
-`cd www && python3 -m http.server 8080`.
+Die WASM-Dateien (`modplayer.wasm`, `mandel.wasm`) liegen nicht im Repository: `.gitignore`
+hält `*.wasm` und `*.wav` heraus, und die CI baut sie bei jedem Push selbst. `build.sh` erzeugt
+sie lokal und kopiert sie nach `www/` und `www-fb/`. Danach startet es den Webserver für die
+klassische Edition. Für die Framebuffer-Edition:
 
-Voraussetzung für den Build: rustup/cargo und Python 3 (für den lokalen Webserver). Das Skript installiert
-das Target `wasm32-unknown-unknown`, falls es fehlt. wasm-bindgen oder wasm-pack werden
-nicht gebraucht.
+```sh
+./build.sh --no-serve && cd www-fb && python3 -m http.server 8080
+```
 
-Im Browser auf **Play** tippen. Standard-Song ist „Neon Techno“ von Drozerix (`www/drozerix_-_neon_techno.mod`, Public Domain, siehe [CREDITS.md](CREDITS.md)). Daneben liegen die eigenen Stücke „Orbitalfunk“ und „November Static“. Einen anderen Standard-Song bettest du mit `python3 scripts/embed_song.py <datei.mod>` in `www/song.js` ein. Fremde Module bitte nicht committen; `.gitignore` hält `www/12th_warrior.mod` heraus. Eigene `.mod`-Dateien lassen sich über **Datei …** oder per
+Voraussetzung für den Build: rustup/cargo und Python 3 (für den lokalen Webserver). Das Skript
+installiert das Target `wasm32-unknown-unknown`, falls es fehlt. wasm-bindgen oder wasm-pack
+werden nicht gebraucht. Wer nur die fertigen Dateien will, findet sie auch im Artefakt `site`
+jedes CI-Laufs (Tab *Actions*).
+
+Im Browser auf **Play** tippen. Standard-Song ist „Neon Techno“ von Drozerix (`www/drozerix_-_neon_techno.mod`, Public Domain, siehe [CREDITS.md](CREDITS.md)). Daneben liegen die eigenen Stücke „Orbitalfunk“ und „November Static“. Einen anderen Standard-Song bettest du mit `python3 scripts/embed_song.py <datei.mod>` in `www/song.js` ein. Fremde Module bitte nicht committen; `.gitignore` hält zum Beispiel `www/12th_warrior.mod` heraus. Eigene `.mod`-Dateien lassen sich über **Datei …** oder per
 Drag & Drop laden. Wenn du auf eine Position in der Order-Liste tippst, springt der Player dorthin.
 
 ### Ohne wasm32-Target bauen
 
-`src/replayer.rs` und `src/api.rs` verwenden nur den Sprachkern: keine Iteratoren,
-keine `Option`, keine Slices, keine Allokation. Deshalb lassen sie sich auch mit einem
-winzigen Ersatz für `core` direkt nach WebAssembly übersetzen (so wurde die mitgelieferte
-`www/modplayer.wasm` gebaut):
+Die ganze Bibliothek (Replayer, FFT, Renderer, API) verwendet nur den Sprachkern: keine
+Iteratoren, keine `Option`, keine Slices, keine Allokation, keine Methoden aus `core`. Deshalb
+lässt sie sich auch ohne installiertes wasm32-Target mit einem winzigen Ersatz für `core`
+direkt nach WebAssembly übersetzen. Die CI baut diese Variante zur Kontrolle bei jedem Push mit:
 
 ```sh
+mkdir -p preview/out
 RUSTC_BOOTSTRAP=1 rustc --edition 2021 --target wasm32-unknown-unknown --crate-type cdylib \
   -C opt-level=3 -C panic=abort -C overflow-checks=no -C strip=symbols \
-  -o www/modplayer.wasm preview/minicore.rs
+  -o preview/out/modplayer.wasm preview/minicore.rs
+cp preview/out/modplayer.wasm www/ && cp preview/out/modplayer.wasm www-fb/
 ```
 
 Die so gebaute WASM-Datei gibt den Song bis auf ±1 LSB identisch mit dem nativen Build aus.
@@ -47,6 +58,16 @@ Die so gebaute WASM-Datei gibt den Song bis auf ±1 LSB identisch mit dem native
 ```sh
 cargo test
 cargo run --release --bin mod2wav -- www/november_static.mod song.wav
+cargo run --release --bin fbshot -- www/drozerix_-_neon_techno.mod /tmp/frames 1280 800
+```
+
+## Dokumentation
+
+Jede öffentliche Funktion ist mit Zweck, Argumenten und Rückgabewert dokumentiert (die CI
+bricht ab, wenn etwas fehlt). Als HTML ansehen:
+
+```sh
+cargo doc --no-deps --open
 ```
 
 ## Aufbau
@@ -85,11 +106,11 @@ Doppelklick oder **Vollbild** füllt den Bildschirm.
 
 ## Spektrum-Ansicht
 
-Die dritte Ansicht zeigt das Frequenzspektrum der Musik. Der Rust-Replayer hält dafür die
+Die dritte Ansicht zeigt das Frequenzspektrum der Musik. Die API (`src/api.rs`) hält dafür die
 letzten 4096 Samples des Mixes (Mono) in einem Ringpuffer. `mp_spectrum(4096)` berechnet daraus
 mit einer eigenen FFT (Radix-2, Cooley-Tukey, Hann-Fenster) das Leistungsspektrum. Das geschieht
 alle 1024 Samples, also mit 75 % Überlappung. Die FFT kommt ohne `core`-Mathematik aus: Sinus und
-Kosinus für die Twiddle-Faktoren rechnet sie per Taylor-Reihe. Getestet ist sie gegen eine naive
+Kosinus für die Twiddle-Faktoren kommen per Taylor-Reihe aus `src/math.rs`. Getestet ist sie gegen eine naive
 DFT (`cargo test`).
 
 Angezeigt werden:
@@ -105,7 +126,7 @@ nach Bernstein.
 
 ## Songs
 
-Die beiden Songs werden von Python-Skripten in `songs/` erzeugt. Sie synthetisieren alle Samples
+Die beiden eigenen Songs werden von Python-Skripten in `songs/` erzeugt. Sie synthetisieren alle Samples
 selbst und schreiben die MOD-Datei. Dafür werden Python 3 und numpy gebraucht.
 
 - `songs/make_space.py` → „Orbitalfunk“: 8 Kanäle (8CHN), D-Moll, 124 BPM. Lead mit Echo-Kanal, Arpeggio, Pad mit eingebautem Einschwingen, Oktav-Bass, Drums mit Gated-Snare.
@@ -133,22 +154,23 @@ jedem Schlag pulsiert er leicht, auf der Eins jedes Takts etwas stärker.
 
 | Job | Prüft |
 |---|---|
-| **Rust** | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, natives Rendern beider Songs |
-| **WebAssembly** | Build mit `cargo` für `wasm32-unknown-unknown` **und** über `preview/minicore.rs`. Der zweite Build stellt sicher, dass Replayer, FFT und API weiterhin nur den Sprachkern nutzen. Danach läuft `tests/wasm_smoke.mjs` in Node: Exporte, Laden, Klang, FFT und Vergleich mit dem nativen Rendern (±2 LSB). Zum Schluss werden die Skripte der Seite geprüft und die Seite als Artefakt gebaut. |
-| **Songs** | Erzeugt beide Songs neu aus `songs/*.py` und prüft, dass der Rust-Player sie abspielt |
-| **Pages** | Nur bei Push auf den Standard-Branch (`main` oder `master`): veröffentlicht die Demo-Seite mit „Neon Techno“ auf GitHub Pages |
+| **Rust** | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc` (jedes öffentliche Element dokumentiert, keine kaputten Links), `cargo test`, natives Rendern der drei Songs |
+| **WebAssembly** | Build mit `cargo` für `wasm32-unknown-unknown` **und** über `preview/minicore.rs`. Der zweite Build stellt sicher, dass die Bibliothek weiterhin nur den Sprachkern nutzt. Dazu kommt der Mandelbrot-SIMD-Kern (`mandel.wasm`). Danach laufen in Node `tests/wasm_smoke.mjs` (Exporte, Laden, Klang, FFT, Vergleich mit dem nativen Rendern auf ±2 LSB) und `tests/vis_smoke.mjs` (Framebuffer-Renderer, mit und ohne SIMD-Kern). Zum Schluss werden die Skripte beider Seiten geprüft und die Website als Artefakt `site` gebaut. |
+| **Songs** | Erzeugt die beiden eigenen Songs neu aus `songs/*.py` und prüft, dass der Rust-Player sie abspielt |
+| **Pages** | Nur bei Push auf den Standard-Branch (`main` oder `master`): veröffentlicht beide Editionen mit „Neon Techno“ auf GitHub Pages (klassisch unter `/`, Framebuffer unter `/fb/`) |
 
 Für GitHub Pages musst du einmalig unter *Settings → Pages → Source* „GitHub Actions“ wählen.
-Danach öffnet [https://markusflad.github.io/rustracker/](https://markusflad.github.io/rustracker/) direkt den Tracker und [https://markusflad.github.io/rustracker/fb/](https://markusflad.github.io/rustracker/fb/) die Framebuffer-Edition; die WASM-Datei dafür baut die CI bei jedem Push neu.
-Im Badge oben `OWNER/REPO` durch den echten Repo-Pfad ersetzen.
+Danach öffnet [https://markusflad.github.io/rustracker/](https://markusflad.github.io/rustracker/) direkt den Tracker und [https://markusflad.github.io/rustracker/fb/](https://markusflad.github.io/rustracker/fb/) die Framebuffer-Edition; die WASM-Dateien dafür baut die CI bei jedem Push neu.
 
 Lokal laufen dieselben Prüfungen mit:
 
 ```sh
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
-cargo build --release --target wasm32-unknown-unknown --lib
+RUSTFLAGS="-D missing_docs" RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+./build.sh --no-serve
 cargo run --release --bin mod2wav -- www/drozerix_-_neon_techno.mod /tmp/native.wav 10
-node tests/wasm_smoke.mjs target/wasm32-unknown-unknown/release/modplayer.wasm www/drozerix_-_neon_techno.mod /tmp/native.wav
+node tests/wasm_smoke.mjs www/modplayer.wasm www/drozerix_-_neon_techno.mod /tmp/native.wav
+node tests/vis_smoke.mjs www-fb/modplayer.wasm www/drozerix_-_neon_techno.mod www-fb/mandel.wasm
 ```
 
 ## Framebuffer-Edition (`www-fb/`)
@@ -156,7 +178,7 @@ node tests/wasm_smoke.mjs target/wasm32-unknown-unknown/release/modplayer.wasm w
 Eine zweite Oberfläche, bei der **jedes Pixel in Rust gezeichnet wird**: Knöpfe, Schrift,
 Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel und Pattern-Ansicht. Rust rendert in einen
 RGBA-Framebuffer im WASM-Speicher, JavaScript legt ihn per `putImageData` auf ein Canvas.
-Das JavaScript (~80 Zeilen) macht nur noch Folgendes:
+Das JavaScript (gut 100 Zeilen samt dem kleinen Worker für den Mandelbrot-Kern) macht nur noch Folgendes:
 
 - WASM laden, AudioWorklet starten und dessen Daten in einen Puffer des Renderers kopieren
 - jedes Bild `vis_frame()` aufrufen und den Framebuffer anzeigen
@@ -190,8 +212,11 @@ sich davon Palettenindizes liefern: Rust vergibt die Aufträge (`vis_mb_take`, `
 die Worker rechnen Zeilenblöcke, das JavaScript kopiert sie zurück (`vis_mb_rows`). Ohne Worker
 oder ohne SIMD rechnet der Renderer selbst, mit dem einfacheren Pfad in `src/vis_mandel.rs`.
 
+`build.sh` baut ihn mit und kopiert ihn in beide Oberflächen; von Hand:
+
 ```sh
 RUSTC_BOOTSTRAP=1 rustc --edition 2021 --target wasm32-unknown-unknown --crate-type cdylib \
   -C opt-level=3 -C target-feature=+simd128 -C panic=abort -C strip=symbols \
-  -o www-fb/mandel.wasm kernel/mandel_wasm.rs
+  -o www/mandel.wasm kernel/mandel_wasm.rs
+cp www/mandel.wasm www-fb/
 ```

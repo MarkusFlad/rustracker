@@ -36,21 +36,33 @@ fn player() -> &'static mut Player {
     unsafe { &mut *(&raw mut PLAYER) }
 }
 
-/// Where JS copies the MOD file before `mp_load`.
+/// Where JS copies the MOD file before [`mp_load`].
+///
+/// # Returns
+/// Pointer to [`MOD_CAPACITY`] writable bytes.
 #[no_mangle]
 pub extern "C" fn mp_mod_buffer() -> *mut u8 {
     (&raw mut MOD_BUF) as *mut u8
 }
 
-/// Size of the buffer of `mp_mod_buffer` (bytes).
+/// Size of the buffer of [`mp_mod_buffer`].
+///
+/// # Returns
+/// Bytes ([`MOD_CAPACITY`]).
 #[no_mangle]
 pub extern "C" fn mp_mod_capacity() -> usize {
     MOD_CAPACITY
 }
 
-/// Parse the MOD previously copied into `mp_mod_buffer()` and start at position 0.
-/// Returns the channel count (> 0) or a negative error code (-3: larger than the buffer;
-/// others from [`Player::load`]).
+/// Parses the MOD previously copied into [`mp_mod_buffer`] and starts at position 0.
+///
+/// # Arguments
+/// * `len` - length of the file in bytes
+/// * `sample_rate` - output sample rate in Hz
+///
+/// # Returns
+/// The channel count (> 0) or an error code: -3 larger than the buffer, -1 too short, -2
+/// unsupported channel count.
 #[no_mangle]
 pub extern "C" fn mp_load(len: usize, sample_rate: f32) -> i32 {
     if len > MOD_CAPACITY {
@@ -59,7 +71,13 @@ pub extern "C" fn mp_load(len: usize, sample_rate: f32) -> i32 {
     player().load((&raw const MOD_BUF) as *const u8, len, sample_rate)
 }
 
-/// Render `frames` (max 4096) stereo frames; returns a pointer to 2*frames f32.
+/// Renders the next frames and appends their mono mix to the spectrum ring.
+///
+/// # Arguments
+/// * `frames` - number of frames, at most [`MAX_FRAMES`] (more are cut)
+///
+/// # Returns
+/// Pointer to 2·frames interleaved stereo f32, valid until the next call.
 #[no_mangle]
 pub extern "C" fn mp_render(frames: usize) -> *const f32 {
     let n = if frames > MAX_FRAMES {
@@ -102,81 +120,122 @@ fn clamp32(v: f32, lo: f32, hi: f32) -> f32 {
     }
 }
 
-/// Planar per-channel output of the last `mp_render` (channels * frames).
+/// Per-channel output of the last [`mp_render`].
+///
+/// # Returns
+/// Pointer to channels·frames f32, one block of `frames` values per channel.
 #[no_mangle]
 pub extern "C" fn mp_channels_ptr() -> *const f32 {
     (&raw const CHAN) as *const f32
 }
 
 /// Channel count of the loaded song.
+///
+/// # Returns
+/// 4, 6, 8, ... (0 without a song).
 #[no_mangle]
 pub extern "C" fn mp_num_channels() -> u32 {
     player().channels as u32
 }
 
-/// Current song position (index into the order list).
+/// Current song position.
+///
+/// # Returns
+/// Index into the order list.
 #[no_mangle]
 pub extern "C" fn mp_order() -> u32 {
     player().order_pos as u32
 }
 
-/// Current row (0..63).
+/// Current row.
+///
+/// # Returns
+/// 0..63.
 #[no_mangle]
 pub extern "C" fn mp_row() -> u32 {
     player().row as u32
 }
 
 /// Pattern at the current song position.
+///
+/// # Returns
+/// The pattern number.
 #[no_mangle]
 pub extern "C" fn mp_pattern() -> u32 {
     player().pattern() as u32
 }
 
+/// Length of the order list.
+///
+/// # Returns
 /// Number of song positions.
 #[no_mangle]
 pub extern "C" fn mp_song_length() -> u32 {
     player().song_len as u32
 }
 
+/// Current speed.
+///
+/// # Returns
 /// Ticks per row.
 #[no_mangle]
 pub extern "C" fn mp_speed() -> u32 {
     player().speed
 }
 
-/// Tempo in BPM (125 = 50 ticks per second).
+/// Current tempo.
+///
+/// # Returns
+/// BPM (125 = 50 ticks per second).
 #[no_mangle]
 pub extern "C" fn mp_tempo() -> u32 {
     player().tempo
 }
 
-/// How many times the song has reached its end.
+/// How often the song has reached its end (wrapped around).
+///
+/// # Returns
+/// The count since [`mp_load`].
 #[no_mangle]
 pub extern "C" fn mp_loops() -> u32 {
     player().loops
 }
 
-/// Jump to song position `order` (row 0).
+/// Jumps to a song position (row 0).
+///
+/// # Arguments
+/// * `order` - song position; out of range means 0
 #[no_mangle]
 pub extern "C" fn mp_set_position(order: u32) {
     player().set_position(order as usize)
 }
 
-/// Stereo separation: 0 = mono, 1 = hard Amiga panning.
+/// Sets the stereo separation.
+///
+/// # Arguments
+/// * `sep` - 0 = mono ..= 1 = hard Amiga panning (clamped)
 #[no_mangle]
 pub extern "C" fn mp_set_separation(sep: f32) {
     player().separation = clamp32(sep, 0.0, 1.0);
 }
 
-/// Output gain, 0 ..= 2.
+/// Sets the output gain.
+///
+/// # Arguments
+/// * `gain` - 0 ..= 2 (clamped), default 0.5
 #[no_mangle]
 pub extern "C" fn mp_set_gain(gain: f32) {
     player().gain = clamp32(gain, 0.0, 2.0);
 }
 
-/// FFT (Hann window) of the last `size` mono samples of the mix; `size` is a power
-/// of two from 16 to 4096. Returns a pointer to size/2+1 power values
-/// (amplitude², 1.0 = full-scale sine), or null for an unsupported size.
+/// FFT (Hann window) of the newest mono samples of the mix.
+///
+/// # Arguments
+/// * `size` - FFT size: a power of two from 16 to 4096
+///
+/// # Returns
+/// Pointer to size/2+1 power values (amplitude², 1.0 = full-scale sine), valid until the next call,
+/// or null for an unsupported size.
 #[no_mangle]
 pub extern "C" fn mp_spectrum(size: usize) -> *const f32 {
     let f = unsafe { &mut *(&raw mut FFT) };
@@ -196,21 +255,37 @@ fn vis() -> &'static mut Vis {
     unsafe { &mut *(&raw mut VIS) }
 }
 
-/// Where JS copies the next worklet message: channel scopes (1024 floats each, at most
-/// 8 channels), then master L and R, then at vis_spec_offset() the 2049 spectrum values.
+/// Where JS copies the next worklet message: channel scopes (1024 floats each, at most 8 channels),
+/// then master L and R, then at [`vis_spec_offset`] the 2049 spectrum values. Complete it with
+/// [`vis_commit`].
+///
+/// # Returns
+/// Pointer to the slot's floats.
 #[no_mangle]
 pub extern "C" fn vis_slot_ptr() -> *mut f32 {
     vis().slot_ptr()
 }
 
-/// Offset of the spectrum within a slot (floats).
+/// Offset of the spectrum within a slot.
+///
+/// # Returns
+/// Floats from the start of the slot.
 #[no_mangle]
 pub extern "C" fn vis_spec_offset() -> u32 {
     crate::vis::SPEC_OFFSET as u32
 }
 
-/// The slot is filled: `t` is the time (performance.now() + output latency) when it is
-/// heard; the rest is the replayer state at that moment (see [`Vis::commit`]).
+/// The slot is filled (see [`Vis::commit`]).
+///
+/// # Arguments
+/// * `t` - when it is heard: performance.now() + output latency, in ms
+/// * `order` - song position
+/// * `row` - row, 0..63
+/// * `pattern` - pattern number
+/// * `speed` - ticks per row
+/// * `tempo` - BPM
+/// * `nch` - channels copied into the slot
+/// * `sample_rate` - sample rate in Hz
 #[no_mangle]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn vis_commit(
@@ -226,58 +301,98 @@ pub extern "C" fn vis_commit(
     vis().commit(t, order, row, pattern, speed, tempo, nch, sample_rate)
 }
 
-/// Draw a frame of `w` x `h` pixels (clamped to the buffer, see vis_width/vis_height);
-/// `css` = framebuffer pixels per CSS pixel. Returns a pointer to the RGBA pixels.
+/// Draws a frame.
+///
+/// # Arguments
+/// * `now` - time in ms (performance.now())
+/// * `w` - wanted width in pixels
+/// * `h` - wanted height; clamped to the buffer, see [`vis_width`]/[`vis_height`]
+/// * `css` - framebuffer pixels per CSS pixel
+///
+/// # Returns
+/// Pointer to the RGBA pixels, `vis_width()`·`vis_height()` u32.
 #[no_mangle]
 pub extern "C" fn vis_frame(now: f64, w: i32, h: i32, css: f64) -> *const u32 {
     let p = unsafe { &*(&raw const PLAYER) };
     vis().frame(now, w, h, css, p)
 }
 
-/// Width of the last frame (after clamping).
+/// Width of the last frame.
+///
+/// # Returns
+/// Pixels, after clamping.
 #[no_mangle]
 pub extern "C" fn vis_width() -> i32 {
     vis().width()
 }
 
-/// Height of the last frame (after clamping).
+/// Height of the last frame.
+///
+/// # Returns
+/// Pixels, after clamping.
 #[no_mangle]
 pub extern "C" fn vis_height() -> i32 {
     vis().height()
 }
 
-/// Pointer press at framebuffer coordinates; returns an action for JS (0 none, 1 play/pause,
-/// 2 stop, 3 open file, 4 fullscreen, 5 seek to vis_action_arg(), 7 loop on/off).
+/// Pointer press.
+///
+/// # Arguments
+/// * `x` - column in framebuffer pixels
+/// * `y` - row in framebuffer pixels
+///
+/// # Returns
+/// The action for JS: 0 none, 1 play/pause, 2 stop, 3 open file, 4 fullscreen, 5 seek to
+/// `vis_action_arg()`, 7 loop on/off.
 #[no_mangle]
 pub extern "C" fn vis_pointer(x: i32, y: i32) -> i32 {
     vis().pointer(x, y)
 }
 
-/// Key press (character code); returns an action like `vis_pointer`.
+/// Key press.
+///
+/// # Arguments
+/// * `code` - character code of the key
+///
+/// # Returns
+/// The action for JS: 0 none, 1 play/pause, 2 stop, 3 open file, 4 fullscreen, 5 seek to
+/// `vis_action_arg()`, 7 loop on/off.
 #[no_mangle]
 pub extern "C" fn vis_key(code: u32) -> i32 {
     vis().key(code)
 }
 
-/// Argument of the last action (seek position, loop or fullscreen state).
+/// Argument of the last action.
+///
+/// # Returns
+/// Seek position for 5, 1/0 (on/off) for 4 and 7.
 #[no_mangle]
 pub extern "C" fn vis_action_arg() -> i32 {
     vis().action_arg()
 }
 
-/// Playing (1) or paused/stopped (0).
+/// Tells the renderer whether the song is playing.
+///
+/// # Arguments
+/// * `on` - 1 playing, 0 paused or stopped
 #[no_mangle]
 pub extern "C" fn vis_set_playing(on: i32) {
     vis().set_playing(on != 0)
 }
 
-/// The browser's fullscreen state (1/0), e.g. after leaving it with Escape.
+/// The browser's fullscreen state, e.g. after leaving it with Escape.
+///
+/// # Arguments
+/// * `on` - 1 in fullscreen, 0 not
 #[no_mangle]
 pub extern "C" fn vis_set_fullscreen(on: i32) {
     vis().set_fullscreen(on != 0)
 }
 
-/// Song events: 1 = song ended, 2 = new song loaded.
+/// Song events.
+///
+/// # Arguments
+/// * `code` - 1 = song ended, 2 = new song loaded
 #[no_mangle]
 pub extern "C" fn vis_event(code: i32) {
     vis().event(code)
@@ -285,37 +400,59 @@ pub extern "C" fn vis_event(code: i32) {
 
 // ---- Mandelbrot jobs for the Web Workers (SIMD kernel in kernel/mandel_wasm.rs)
 
-/// Tell the renderer that `n` workers render the Mandelbrot rows (0 = render itself).
+/// Tells the renderer who computes the Mandelbrot rows.
+///
+/// # Arguments
+/// * `n` - number of Web Workers; 0 = the renderer itself
 #[no_mangle]
 pub extern "C" fn vis_mb_workers(n: i32) {
     vis().mb_set_workers(n)
 }
 
-/// Generation of a new job to hand out, or 0. Parameters: vis_mb_param(0..5).
+/// Hands out a new Mandelbrot job, once.
+///
+/// # Returns
+/// Its generation, or 0 if there is none; parameters via [`vis_mb_param`].
 #[no_mangle]
 pub extern "C" fn vis_mb_take() -> u32 {
     vis().mb_take()
 }
 
-/// Generation of the job currently being rendered (results of older jobs are dropped).
+/// Generation of the job being rendered; results of older jobs are dropped.
+///
+/// # Returns
+/// The generation.
 #[no_mangle]
 pub extern "C" fn vis_mb_gen() -> u32 {
     vis().mb_gen()
 }
 
-/// 0 re0, 1 im0, 2 step, 3 width (multiple of 8), 4 height, 5 max iterations.
+/// A parameter of the current job.
+///
+/// # Arguments
+/// * `i` - 0 re0, 1 im0, 2 step, 3 width (multiple of 8), 4 height, 5 max iterations
+///
+/// # Returns
+/// The value.
 #[no_mangle]
 pub extern "C" fn vis_mb_param(i: i32) -> f64 {
     vis().mb_param(i)
 }
 
-/// Where the workers' rows go: palette indices, width * height u32.
+/// Where the workers' rows go.
+///
+/// # Returns
+/// Pointer to width·height u32 palette indices.
 #[no_mangle]
 pub extern "C" fn vis_mb_back_ptr() -> *mut u32 {
     vis().mb_back_ptr()
 }
 
-/// `rows` rows of job `gen` have been copied into the back buffer.
+/// Rows have been copied into the back buffer.
+///
+/// # Arguments
+/// * `gen` - generation of the job
+/// * `rows` - number of rows
 #[no_mangle]
 pub extern "C" fn vis_mb_rows(gen: u32, rows: i32) {
     vis().mb_rows(gen, rows)

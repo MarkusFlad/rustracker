@@ -24,6 +24,13 @@ fn from_bits(u: u64) -> f64 {
 // ------------------------------------------------------------------ integers
 
 /// Smaller of two `i32`.
+///
+/// # Arguments
+/// * `a` - first value
+/// * `b` - second value
+///
+/// # Returns
+/// `a` or `b`, whichever is smaller.
 pub fn imin(a: i32, b: i32) -> i32 {
     if a < b {
         a
@@ -32,6 +39,13 @@ pub fn imin(a: i32, b: i32) -> i32 {
     }
 }
 /// Larger of two `i32`.
+///
+/// # Arguments
+/// * `a` - first value
+/// * `b` - second value
+///
+/// # Returns
+/// `a` or `b`, whichever is larger.
 pub fn imax(a: i32, b: i32) -> i32 {
     if a > b {
         a
@@ -39,11 +53,25 @@ pub fn imax(a: i32, b: i32) -> i32 {
         b
     }
 }
+/// Limits an `i32` to a range.
+///
+/// # Arguments
+/// * `v` - value
+/// * `lo` - lower bound
+/// * `hi` - upper bound (`lo <= hi`)
+///
+/// # Returns
 /// `v` limited to `lo ..= hi`.
 pub fn iclamp(v: i32, lo: i32, hi: i32) -> i32 {
     imax(lo, imin(v, hi))
 }
 /// Absolute value of an `i32` (no overflow check for `i32::MIN`).
+///
+/// # Arguments
+/// * `v` - value
+///
+/// # Returns
+/// `|v|`.
 pub fn iabs(v: i32) -> i32 {
     if v < 0 {
         0 - v
@@ -52,6 +80,13 @@ pub fn iabs(v: i32) -> i32 {
     }
 }
 /// Smaller of two `usize`.
+///
+/// # Arguments
+/// * `a` - first value
+/// * `b` - second value
+///
+/// # Returns
+/// `a` or `b`, whichever is smaller.
 pub fn umin(a: usize, b: usize) -> usize {
     if a < b {
         a
@@ -60,6 +95,13 @@ pub fn umin(a: usize, b: usize) -> usize {
     }
 }
 /// Smaller of two `u32`.
+///
+/// # Arguments
+/// * `a` - first value
+/// * `b` - second value
+///
+/// # Returns
+/// `a` or `b`, whichever is smaller.
 pub fn u32min(a: u32, b: u32) -> u32 {
     if a < b {
         a
@@ -70,7 +112,13 @@ pub fn u32min(a: u32, b: u32) -> u32 {
 
 // ------------------------------------------------------------------ floats
 
-/// Absolute value.
+/// Absolute value of an `f64`.
+///
+/// # Arguments
+/// * `x` - value
+///
+/// # Returns
+/// `|x|`.
 pub fn absf(x: f64) -> f64 {
     if x < 0.0 {
         0.0 - x
@@ -78,7 +126,14 @@ pub fn absf(x: f64) -> f64 {
         x
     }
 }
-/// Smaller of two values.
+/// Smaller of two `f64`.
+///
+/// # Arguments
+/// * `a` - first value
+/// * `b` - second value
+///
+/// # Returns
+/// `a` or `b`, whichever is smaller (`b` if they compare equal).
 pub fn minf(a: f64, b: f64) -> f64 {
     if a < b {
         a
@@ -86,7 +141,14 @@ pub fn minf(a: f64, b: f64) -> f64 {
         b
     }
 }
-/// Larger of two values.
+/// Larger of two `f64`.
+///
+/// # Arguments
+/// * `a` - first value
+/// * `b` - second value
+///
+/// # Returns
+/// `a` or `b`, whichever is larger (`b` if they compare equal).
 pub fn maxf(a: f64, b: f64) -> f64 {
     if a > b {
         a
@@ -94,11 +156,25 @@ pub fn maxf(a: f64, b: f64) -> f64 {
         b
     }
 }
+/// Limits an `f64` to a range.
+///
+/// # Arguments
+/// * `x` - value
+/// * `lo` - lower bound
+/// * `hi` - upper bound (`lo <= hi`)
+///
+/// # Returns
 /// `x` limited to `lo ..= hi`.
 pub fn clampf(x: f64, lo: f64, hi: f64) -> f64 {
     maxf(lo, minf(x, hi))
 }
-/// `v` limited to `-1 ..= 1` (for oscilloscope traces).
+/// Limits a sample value to full scale (for oscilloscope traces).
+///
+/// # Arguments
+/// * `v` - sample value
+///
+/// # Returns
+/// `v` limited to `-1 ..= 1`.
 pub fn clamp1(v: f32) -> f32 {
     if v > 1.0 {
         1.0
@@ -108,7 +184,13 @@ pub fn clamp1(v: f32) -> f32 {
         v
     }
 }
-/// Largest integer <= x (for |x| < 2^62).
+/// Rounds down.
+///
+/// # Arguments
+/// * `x` - value, `|x| < 2^62`
+///
+/// # Returns
+/// The largest integer `<= x`, as `f64`.
 pub fn floor(x: f64) -> f64 {
     let i = x as i64;
     let f = i as f64;
@@ -118,12 +200,24 @@ pub fn floor(x: f64) -> f64 {
         f
     }
 }
-/// Fractional part, `x - floor(x)`, in `0 .. 1`.
+/// Fractional part.
+///
+/// # Arguments
+/// * `x` - value, `|x| < 2^62`
+///
+/// # Returns
+/// `x - floor(x)`, in `0 .. 1`.
 pub fn fract(x: f64) -> f64 {
     x - floor(x)
 }
 
-/// sin(x) for any x, accurate to about 1e-15 (range reduction + Taylor series to x^17).
+/// Sine, accurate to about 1e-15 (range reduction + Taylor series to x^17).
+///
+/// # Arguments
+/// * `x` - angle in radians, any value
+///
+/// # Returns
+/// sin(x) in `-1 ..= 1`.
 pub fn sin(x: f64) -> f64 {
     let x = reduce_half_pi(x);
     let x2 = x * x;
@@ -160,12 +254,24 @@ fn reduce_half_pi(x: f64) -> f64 {
     x
 }
 
-/// cos(x) for any x, accurate to about 1e-15.
+/// Cosine, accurate to about 1e-15.
+///
+/// # Arguments
+/// * `x` - angle in radians, any value
+///
+/// # Returns
+/// cos(x) in `-1 ..= 1`.
 pub fn cos(x: f64) -> f64 {
     sin(x + PI / 2.0)
 }
 
-/// log2(x) for x > 0, about 1e-12 relative accuracy. Returns -1100 for x <= 0.
+/// Binary logarithm, about 1e-12 relative accuracy.
+///
+/// # Arguments
+/// * `x` - value, should be > 0
+///
+/// # Returns
+/// log2(x), or -1100 for `x <= 0`.
 pub fn log2(x: f64) -> f64 {
     if x <= 0.0 {
         return -1100.0;
@@ -195,12 +301,24 @@ pub fn log2(x: f64) -> f64 {
     ex + t * s / LN2
 }
 
-/// log10(x) for x > 0.
+/// Decimal logarithm.
+///
+/// # Arguments
+/// * `x` - value, should be > 0
+///
+/// # Returns
+/// log10(x) (very negative for `x <= 0`, see [`log2`]).
 pub fn log10(x: f64) -> f64 {
     log2(x) * 0.30102999566398120
 }
 
-/// 2^x, about 1e-13 relative accuracy for |x| < 1000.
+/// Power of two, about 1e-13 relative accuracy.
+///
+/// # Arguments
+/// * `x` - exponent, `|x| < 1000`
+///
+/// # Returns
+/// 2^x.
 pub fn exp2(x: f64) -> f64 {
     if x < -1020.0 {
         return 0.0;
@@ -221,7 +339,14 @@ pub fn exp2(x: f64) -> f64 {
     p * from_bits(e << 52)
 }
 
-/// x^y for x > 0 (0 for x <= 0).
+/// Power for positive bases.
+///
+/// # Arguments
+/// * `x` - base, should be > 0
+/// * `y` - exponent
+///
+/// # Returns
+/// x^y, or 0 for `x <= 0`.
 pub fn pow(x: f64, y: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
@@ -229,7 +354,13 @@ pub fn pow(x: f64, y: f64) -> f64 {
     exp2(y * log2(x))
 }
 
-/// Square root (0 for x <= 0).
+/// Square root (estimate via exp2/log2, refined by two Newton steps).
+///
+/// # Arguments
+/// * `x` - value
+///
+/// # Returns
+/// √x, or 0 for `x <= 0`.
 pub fn sqrt(x: f64) -> f64 {
     if x <= 0.0 {
         return 0.0;
@@ -239,12 +370,24 @@ pub fn sqrt(x: f64) -> f64 {
     0.5 * (y + x / y)
 }
 
-/// e^(-k) for k >= 0 (used for exponential decays).
+/// Decay factor for exponential smoothing.
+///
+/// # Arguments
+/// * `k` - rate × time, `k >= 0`
+///
+/// # Returns
+/// e^(-k), in `0 ..= 1`.
 pub fn exp_neg(k: f64) -> f64 {
     exp2(0.0 - k / LN2)
 }
 
-/// Decibels of a power value: 10·log10(p), with a floor of -140 dB.
+/// Decibels of a power value (amplitude², 1.0 = full scale).
+///
+/// # Arguments
+/// * `p` - power, `>= 0`
+///
+/// # Returns
+/// 10·log10(p), with a floor of -140 dB.
 pub fn power_db(p: f64) -> f64 {
     10.0 * log10(p + 1e-14)
 }

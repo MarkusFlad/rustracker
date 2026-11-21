@@ -25,7 +25,15 @@ pub struct Peak {
 }
 
 impl Spectrum {
-    /// A view of `len` power values at `p` with `bin_hz` Hz per bin.
+    /// A read-only view of a power spectrum.
+    ///
+    /// # Arguments
+    /// * `p` - first power value (bin 0)
+    /// * `len` - number of bins
+    /// * `bin_hz` - width of one bin in Hz (sample rate / FFT size)
+    ///
+    /// # Returns
+    /// The view.
     ///
     /// # Safety
     /// `p` must point to `len` readable f32 values that outlive the view.
@@ -33,14 +41,27 @@ impl Spectrum {
         Spectrum { p, len, bin_hz }
     }
 
-    /// Power of bin `i` (bins past the end read as the last bin).
+    /// Power of one bin.
+    ///
+    /// # Arguments
+    /// * `i` - bin index; bins past the end read as the last bin
+    ///
+    /// # Returns
+    /// The power of bin `i`.
     pub fn bin(&self, i: usize) -> f64 {
         let i = if i < self.len { i } else { self.len - 1 };
         unsafe { *((self.p as usize + i * 4) as *const f32) as f64 }
     }
 
-    /// Strongest power between `f0` and `f1` Hz. A band narrower than one bin
-    /// interpolates linearly between the two nearest bins.
+    /// Strongest power within a frequency band. A band narrower than one bin interpolates linearly
+    /// between the two nearest bins.
+    ///
+    /// # Arguments
+    /// * `f0` - lower edge in Hz
+    /// * `f1` - upper edge in Hz (`f1 > f0`)
+    ///
+    /// # Returns
+    /// The power (not dB) of the band.
     pub fn band(&self, f0: f64, f1: f64) -> f64 {
         let k0 = f0 / self.bin_hz;
         let k1 = f1 / self.bin_hz;
@@ -66,8 +87,15 @@ impl Spectrum {
         v
     }
 
-    /// The strongest bin between `fmin` and `fmax` Hz, refined by fitting a parabola
-    /// through the dB values of it and its neighbours.
+    /// The strongest bin within a frequency range, refined by fitting a parabola through the dB
+    /// values of it and its neighbours.
+    ///
+    /// # Arguments
+    /// * `fmin` - lower limit in Hz
+    /// * `fmax` - upper limit in Hz
+    ///
+    /// # Returns
+    /// A [`Peak`]; `found` is false if no bin had noticeable power (< 1e-7).
     pub fn peak(&self, fmin: f64, fmax: f64) -> Peak {
         let none = Peak {
             found: false,
@@ -105,12 +133,25 @@ impl Spectrum {
     }
 }
 
-/// Power mapped to `0 ..= 1` on a dB scale from `db_min` (0) to 0 dB (1).
+/// Maps a power value onto a normalised dB scale.
+///
+/// # Arguments
+/// * `power` - power value (amplitude²)
+/// * `db_min` - dB value that maps to 0, e.g. -96
+///
+/// # Returns
+/// `0 ..= 1`: 0 at `db_min` and below, 1 at 0 dB and above.
 pub fn unit_db(power: f64, db_min: f64) -> f64 {
     clampf((power_db(power) - db_min) / (0.0 - db_min), 0.0, 1.0)
 }
 
-/// MIDI note number nearest to a frequency (A4 = 440 Hz = 69).
+/// The MIDI note nearest to a frequency (A4 = 440 Hz = 69).
+///
+/// # Arguments
+/// * `freq` - frequency in Hz, > 0
+///
+/// # Returns
+/// The MIDI note number.
 pub fn midi_note(freq: f64) -> i32 {
     floor(69.0 + 12.0 * log2(freq / 440.0) + 0.5) as i32
 }
@@ -124,16 +165,36 @@ pub struct LogScale {
 }
 
 impl LogScale {
-    /// Axis from `fmin` to `fmax` Hz.
+    /// A logarithmic frequency axis.
+    ///
+    /// # Arguments
+    /// * `fmin` - frequency at the left edge in Hz, > 0
+    /// * `fmax` - frequency at the right edge in Hz, > `fmin`
+    ///
+    /// # Returns
+    /// The axis.
     pub fn new(fmin: f64, fmax: f64) -> LogScale {
         LogScale { fmin, fmax }
     }
-    /// Frequency ratio between neighbouring edges when the axis is split into `n` bands.
-    /// Band `i` spans `fmin·r^i .. fmin·r^(i+1)`.
+    /// Frequency ratio between neighbouring band edges when the axis is split into equal bands;
+    /// band `i` spans `fmin·r^i .. fmin·r^(i+1)`.
+    ///
+    /// # Arguments
+    /// * `n` - number of bands
+    ///
+    /// # Returns
+    /// The ratio `r = (fmax/fmin)^(1/n)`.
     pub fn ratio(&self, n: usize) -> f64 {
         pow(self.fmax / self.fmin, 1.0 / n as f64)
     }
-    /// Position of frequency `f` on an axis of width `w` (0 at `fmin`, `w` at `fmax`).
+    /// Position of a frequency on the axis.
+    ///
+    /// # Arguments
+    /// * `f` - frequency in Hz
+    /// * `w` - axis width (pixels or any unit)
+    ///
+    /// # Returns
+    /// 0 at `fmin`, `w` at `fmax`, logarithmic in between.
     pub fn x(&self, f: f64, w: f64) -> f64 {
         log2(f / self.fmin) / log2(self.fmax / self.fmin) * w
     }

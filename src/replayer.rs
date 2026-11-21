@@ -119,7 +119,13 @@ fn ft_period(note: usize, ft_nibble: u32) -> i32 {
     FT_PERIODS[(ft_nibble & 15) as usize * 36 + n]
 }
 
-/// Index (0 = C-1 .. 35 = B-3) of the note closest to `period` (finetune 0).
+/// Finds the note closest to a ProTracker period (finetune 0).
+///
+/// # Arguments
+/// * `period` - Amiga period, e.g. 428 for C-2
+///
+/// # Returns
+/// Note index 0 (C-1) .. 35 (B-3).
 pub fn nearest_note(period: i32) -> usize {
     nearest_note_ft(period, 0)
 }
@@ -213,7 +219,16 @@ impl Cell {
         param: 0,
     };
 
-    /// Decodes the 4 bytes of a cell as stored in a MOD pattern.
+    /// Decodes a cell as stored in a MOD pattern.
+    ///
+    /// # Arguments
+    /// * `b0` - byte 0: sample high nibble, period bits 8..11
+    /// * `b1` - byte 1: period bits 0..7
+    /// * `b2` - byte 2: sample low nibble, effect
+    /// * `b3` - byte 3: effect parameter
+    ///
+    /// # Returns
+    /// The decoded cell.
     pub fn decode(b0: u32, b1: u32, b2: u32, b3: u32) -> Cell {
         Cell {
             sample: (b0 & 0xF0) | (b2 >> 4),
@@ -222,19 +237,31 @@ impl Cell {
             param: b3,
         }
     }
-    /// High nibble of the parameter.
+    /// High nibble of the effect parameter.
+    ///
+    /// # Returns
+    /// `param >> 4`, 0..15.
     pub fn x(&self) -> u32 {
         self.param >> 4
     }
-    /// Low nibble of the parameter.
+    /// Low nibble of the effect parameter.
+    ///
+    /// # Returns
+    /// `param & 15`, 0..15.
     pub fn y(&self) -> u32 {
         self.param & 15
     }
-    /// True for EDx (note delay) with x > 0: the note starts later in the row.
+    /// Whether the cell delays its note (EDx with x > 0: the note starts later in the row).
+    ///
+    /// # Returns
+    /// `true` for a note delay.
     pub fn is_note_delay(&self) -> bool {
         self.effect == 0xE && self.x() == 0xD && self.y() > 0
     }
     /// A copy (Cell is not `Copy` in the core-only subset).
+    ///
+    /// # Returns
+    /// An identical cell.
     pub fn copy(&self) -> Cell {
         Cell {
             sample: self.sample,
@@ -653,6 +680,9 @@ pub struct Player {
 
 impl Player {
     /// A player without a song. `const`, so it can initialise a static.
+    ///
+    /// # Returns
+    /// A silent player (0 channels), separation 0.6, gain 0.5.
     pub const fn empty() -> Player {
         Player {
             m: 0 as *const u8,
@@ -685,9 +715,16 @@ impl Player {
         }
     }
 
-    /// Parses the MOD at `m` (`len` bytes) and resets playback. The buffer must stay
-    /// valid and unchanged while the player is used. Returns the channel count (> 0)
-    /// or -1 (too short) / -2 (unsupported channel count). Separation and gain are kept.
+    /// Parses a MOD file and resets playback to position 0. Separation and gain are kept. The
+    /// buffer must stay valid and unchanged while the player is used.
+    ///
+    /// # Arguments
+    /// * `m` - start of the MOD file in memory
+    /// * `len` - its length in bytes
+    /// * `sample_rate` - output sample rate in Hz, e.g. 44100
+    ///
+    /// # Returns
+    /// The channel count (> 0), or -1 (file too short) / -2 (unsupported channel count).
     pub fn load(&mut self, m: *const u8, len: usize, sample_rate: f32) -> i32 {
         let sep = self.separation;
         let gain = self.gain;
@@ -770,7 +807,13 @@ impl Player {
         }
     }
 
-    /// Byte `i` of the loaded MOD file (0 outside), e.g. for the song title.
+    /// A byte of the loaded MOD file, e.g. for the song title.
+    ///
+    /// # Arguments
+    /// * `i` - offset in the file
+    ///
+    /// # Returns
+    /// The byte, or 0 outside the file.
     pub fn mod_byte(&self, i: usize) -> u32 {
         if i < self.mod_len {
             rd(self.m, i)
@@ -779,7 +822,13 @@ impl Player {
         }
     }
 
-    /// Pattern number at order position `pos` (0 outside the order list).
+    /// Pattern number at a position of the order list.
+    ///
+    /// # Arguments
+    /// * `pos` - song position
+    ///
+    /// # Returns
+    /// The pattern number, or 0 outside the order list.
     pub fn order_at(&self, pos: usize) -> u32 {
         if pos < 128 {
             self.order[pos]
@@ -788,12 +837,23 @@ impl Player {
         }
     }
 
-    /// Pattern number at the current order position.
+    /// Pattern number at the current song position.
+    ///
+    /// # Returns
+    /// The pattern being played.
     pub fn pattern(&self) -> usize {
         self.order[self.order_pos] as usize
     }
 
-    /// The cell of channel `c` in `row` of `pattern` (empty outside the song).
+    /// One cell of a pattern.
+    ///
+    /// # Arguments
+    /// * `pattern` - pattern number
+    /// * `row` - row, 0..63
+    /// * `c` - channel, `0 .. channels`
+    ///
+    /// # Returns
+    /// The cell, or an empty cell outside the song.
     pub fn cell(&self, pattern: usize, row: usize, c: usize) -> Cell {
         let o = self.pat_base + ((pattern * ROWS + row) * self.channels + c) * 4;
         if pattern >= self.num_patterns || o + 4 > self.mod_len {
@@ -803,8 +863,10 @@ impl Player {
         Cell::decode(rd(m, o), rd(m, o + 1), rd(m, o + 2), rd(m, o + 3))
     }
 
-    /// Jumps to order position `order` (0 if out of range), row 0, and silences
-    /// all channels.
+    /// Jumps to a song position (row 0) and silences all channels.
+    ///
+    /// # Arguments
+    /// * `order` - song position; out of range means 0
     pub fn set_position(&mut self, order: usize) {
         self.order_pos = if order < self.song_len { order } else { 0 };
         self.row = 0;
@@ -823,9 +885,14 @@ impl Player {
         }
     }
 
-    /// Renders `frames` frames: interleaved stereo into `out` (2·frames floats)
-    /// and planar per-channel signals into `chan_out` (channels·frames floats).
-    /// Both buffers must be large enough.
+    /// Renders the next frames of the song (silence if none is loaded).
+    ///
+    /// # Arguments
+    /// * `out` - receives interleaved stereo, 2·`frames` floats
+    /// * `chan_out` - receives one block of `frames` floats per channel (planar), channels·`frames` floats
+    /// * `frames` - number of frames
+    ///
+    /// Both buffers must be large enough; they are written through raw pointers.
     pub fn render(&mut self, out: *mut f32, chan_out: *mut f32, frames: usize) {
         let nch = self.channels;
         fill(out, frames * 2, 0.0);

@@ -249,7 +249,11 @@ pub struct Vis {
 }
 
 impl Vis {
-    /// All-zero initial state, so the (large) static is placed in .bss.
+    /// All-zero initial state, so the (large) static is placed in .bss; the rest is set up in the
+    /// first [`Vis::frame`].
+    ///
+    /// # Returns
+    /// A renderer that has not drawn yet.
     pub const fn new() -> Vis {
         Vis {
             fb: [0; FB_PIXELS],
@@ -340,8 +344,11 @@ impl Vis {
 
     // ------------------------------------------------------------------ data from the worklet
 
-    /// Where the caller copies the next worklet message (see `vis_slot_ptr` in `api.rs`
-    /// for the layout). Complete it with [`Vis::commit`].
+    /// Where the caller copies the next worklet message (see `vis_slot_ptr` in `api.rs` for the
+    /// layout). Complete it with [`Vis::commit`].
+    ///
+    /// # Returns
+    /// Pointer to [`SLOT_FLOATS`] writable floats.
     pub fn slot_ptr(&mut self) -> *mut f32 {
         ((&raw mut self.slots) as usize + self.wpos * SLOT_FLOATS * 4) as *mut f32
     }
@@ -357,9 +364,18 @@ impl Vis {
         unsafe { Spectrum::new(p as *const f32, SPEC_LEN, self.msgs[k].sr / 4096.0) }
     }
 
-    /// The slot written through [`Vis::slot_ptr`] is complete. `t` is when its audio is
-    /// heard (ms, same clock as `frame`); the other values describe the replayer's position.
-    /// Derives the level, the spectrum bands, a spectrogram column and a 3D history row.
+    /// Completes the slot written through [`Vis::slot_ptr`]. Derives the level, the spectrum bands,
+    /// a spectrogram column and a 3D history row.
+    ///
+    /// # Arguments
+    /// * `t` - when its audio is heard, in ms (same clock as `frame`)
+    /// * `order` - song position
+    /// * `row` - row, 0..63
+    /// * `pattern` - pattern number
+    /// * `speed` - ticks per row (0 means 6)
+    /// * `tempo` - BPM (0 means 125)
+    /// * `nch` - channels in the slot (at most [`VIS_CH`])
+    /// * `sr` - sample rate in Hz
     pub fn commit(
         &mut self,
         t: f64,
@@ -504,7 +520,11 @@ impl Vis {
         self.ended = false;
     }
 
-    /// Whether the song is playing (button label, animation of time-based views).
+    /// Tells the renderer whether the song is playing (button label, animation of time-based
+    /// views).
+    ///
+    /// # Arguments
+    /// * `p` - `true` while playing
     pub fn set_playing(&mut self, p: bool) {
         self.playing = p;
         if p {
@@ -512,7 +532,10 @@ impl Vis {
         }
     }
 
-    /// Events from JS: 1 = the song has ended, 2 = a new song was loaded.
+    /// Song events from JS.
+    ///
+    /// # Arguments
+    /// * `code` - 1 = the song has ended, 2 = a new song was loaded; others are ignored
     pub fn event(&mut self, code: i32) {
         if code == 1 {
             self.ended = true;
@@ -522,28 +545,43 @@ impl Vis {
         }
     }
 
-    /// Width of the last frame in pixels.
+    /// Width of the last frame.
+    ///
+    /// # Returns
+    /// Pixels, after clamping to the framebuffer.
     pub fn width(&self) -> i32 {
         self.w
     }
 
-    /// Height of the last frame in pixels.
+    /// Height of the last frame.
+    ///
+    /// # Returns
+    /// Pixels, after clamping to the framebuffer.
     pub fn height(&self) -> i32 {
         self.h
     }
 
-    /// The argument of the last action returned by `pointer`/`key` (seek position,
-    /// loop or fullscreen state).
+    /// The argument of the last action returned by [`Vis::pointer`] or [`Vis::key`].
+    ///
+    /// # Returns
+    /// Song position for `ACT_SEEK`, 1/0 for `ACT_LOOP` and `ACT_FULLSCREEN`.
     pub fn action_arg(&self) -> i32 {
         self.action_arg
     }
 
     // ------------------------------------------------------------------ frame
 
-    /// Draws a complete frame of `w` x `h` pixels (clamped to the buffer) and returns a
-    /// pointer to the RGBA pixels. `now` is the time in ms, `css` the number of framebuffer
-    /// pixels per CSS pixel, so text and buttons get a sensible physical size on phones
-    /// and desktops; `pl` provides the song (patterns, title, order list).
+    /// Draws a complete frame.
+    ///
+    /// # Arguments
+    /// * `now` - time in ms (performance.now())
+    /// * `w` - wanted width in pixels
+    /// * `h` - wanted height in pixels; the size is clamped to the framebuffer, see [`Vis::width`]/[`Vis::height`]
+    /// * `css` - framebuffer pixels per CSS pixel, so text and buttons get a sensible physical size
+    /// * `pl` - the player with the song (patterns, title, order list)
+    ///
+    /// # Returns
+    /// Pointer to the RGBA pixels (`width()`·`height()` u32, rows without padding).
     pub fn frame(&mut self, now: f64, w: i32, h: i32, css: f64, pl: &Player) -> *const u32 {
         self.set_size(w, h);
         self.init_once(now);
