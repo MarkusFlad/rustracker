@@ -104,7 +104,7 @@ jobs:
           cp target/wasm32-unknown-unknown/release/modplayer.wasm preview/out/mandel.wasm _site/
           python3 scripts/embed_song.py "$DEMO_SONG" _site/song.js
           # framebuffer edition at /fb/
-          cp www-fb/index.html www-fb/worklet.js _site/fb/
+          cp www-fb/index.html www-fb/worklet.js www/rustvis.js _site/fb/
           cp target/wasm32-unknown-unknown/release/modplayer.wasm preview/out/mandel.wasm _site/fb/
           cp _site/song.js _site/fb/
       - uses: actions/upload-artifact@v4
