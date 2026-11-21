@@ -155,6 +155,38 @@ jobs:
           name: video
           path: video
 
+  # The DOS edition (dos/): Rust core code for i586 plus a protected-mode loader in assembler.
+  # Checked without hardware by a Linux harness (every view must draw a frame) and by a run
+  # in DOSBox with a Sound Blaster 16; packed as a ZIP for real PCs and a js-dos page.
+  dos:
+    name: DOS (i586 build, self-test, DOSBox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i586-unknown-linux-gnu
+      - name: Tools (nasm, lld, DOSBox, Pillow)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nasm lld zip dosbox xvfb xauth python3-pil
+      - name: Build (RTRACK.COM, RTRACK.BIN)
+        run: dos/build.sh selftest
+      - name: Self-test without hardware (every view, 4 s)
+        run: python3 dos/selftest_check.py "$DEMO_SONG" dos-shots 4
+      - name: DOSBox, Sound Blaster 16, 8 s of playback
+        # not yet a gate: emulator quirks should not block the deployment
+        continue-on-error: true
+        run: dos/dosbox_test.sh
+      - name: Pack (ZIP, js-dos bundle, page)
+        run: |
+          dos/package.sh dos-site
+          cp dos-shots/*.png dos-site/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dos
+          path: dos-site
+
   # Publishes the demo page to GitHub Pages on every push to the default branch: the tracker
   # page itself (index.html at the site root) with the modplayer.wasm built in the `wasm` job.
   # One-time setup: Settings -> Pages -> Source: "GitHub Actions".
@@ -162,7 +194,7 @@ jobs:
     name: Deploy to GitHub Pages
     # only for pushes to the repository's default branch (main or master)
     if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    needs: [rust, wasm, songs, video]
+    needs: [rust, wasm, songs, video, dos]
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -180,6 +212,11 @@ jobs:
         with:
           name: video
           path: _site/video
+      - name: The DOS edition at /dos/
+        uses: actions/download-artifact@v4
+        with:
+          name: dos
+          path: _site/dos
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
