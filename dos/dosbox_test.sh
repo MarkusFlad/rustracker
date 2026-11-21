@@ -30,8 +30,10 @@ set RTRACK=T8
 RTRACK.COM > RESULT.TXT
 exit
 CONF
-rm -f RESULT.TXT
-SDL_AUDIODRIVER=dummy timeout 180 xvfb-run -a dosbox -conf test.conf || true
+rm -f RESULT.TXT dosbox.log
+touch RESULT.TXT
+SDL_AUDIODRIVER=dummy timeout 180 xvfb-run -a dosbox -conf test.conf > dosbox.log 2>&1 || echo "DOSBox: exit $?" >> dosbox.log
+cat dosbox.log
 echo "--- RTRACK.COM said:"
 cat RESULT.TXT
-grep -q "Bloecke" RESULT.TXT
+grep -q "Tschuess" RESULT.TXT

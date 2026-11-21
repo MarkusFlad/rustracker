@@ -39,6 +39,7 @@ _start:
     xor eax, eax
     rep stosb
     mov [base_phys], esi
+    mov [boot_phys], ebx
     mov [pm_ret], ebp
     mov word [pm_ret+4], 0x18
     call build_idt
@@ -107,8 +108,25 @@ irq_stubs:
 %assign v v+1
 %endrep
 
-exc_common:                     ; a CPU exception: back to DOS with 100h + vector
-    pop eax
+exc_common:                     ; a CPU exception: back to DOS with 100h + vector; the
+    pop eax                     ; faulting EIP and the error code go into the boot info
+    xor edx, edx                ; (offsets 40 and 44) for RTRACK.COM to print
+    cmp eax, 8                  ; vectors with an error code: 8, 10..14, 17
+    je .err
+    cmp eax, 17
+    je .err
+    cmp eax, 10
+    jb .noerr
+    cmp eax, 14
+    ja .noerr
+.err:
+    pop edx
+.noerr:
+    mov ecx, [esp]              ; EIP
+    mov ebx, [boot_phys]
+    sub ebx, [base_phys]
+    mov [ebx+40], ecx
+    mov [ebx+44], edx
     add eax, 0x100
     mov esp, stack_top
     jmp exit_to_dos
@@ -189,6 +207,7 @@ pm_ret:     dd 0                ; far pointer to the 16-bit return code in RTRAC
 idtr:       dw 256*8-1
             dd 0
 base_phys:  dd 0
+boot_phys:  dd 0
 
 section .bss
 alignb 16

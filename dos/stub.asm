@@ -246,6 +246,16 @@ rm_back:
     mov ax, [exit_code]
     sub ax, 100h
     call print_hex8
+    mov dx, msg_eip
+    mov ah, 9
+    int 21h
+    mov eax, [bi_eip]
+    call print_hex32
+    mov dx, msg_err
+    mov ah, 9
+    int 21h
+    mov eax, [bi_err]
+    call print_hex32
     mov dx, msg_crlf
     mov ah, 9
     int 21h
@@ -547,6 +557,18 @@ find_var:
     xor eax, eax
     ret
 
+print_hex32:                    ; eax
+    mov cx, 4
+.byte:
+    rol eax, 8
+    push eax
+    push cx
+    call print_hex8
+    pop cx
+    pop eax
+    loop .byte
+    ret
+
 print_hex8:                     ; al
     push ax
     shr al, 4
@@ -573,6 +595,8 @@ msg_mod     db 'RTRACK: Die MOD-Datei fehlt oder ist zu gross (max. 4 MB).', 13,
 msg_ext     db 'RTRACK: nicht genug Erweiterungsspeicher (etwa 10 MB noetig).', 13, 10, '$'
 msg_read    db 'RTRACK: Fehler beim Laden.', 13, 10, '$'
 msg_exc     db 'RTRACK: CPU-Ausnahme $'
+msg_eip     db ' bei EIP $'
+msg_err     db ', Fehlercode $'
 msg_crlf    db 13, 10, '$'
 name_bin    db 'RTRACK.BIN', 0
 name_mod    db 'NEON.MOD', 0
@@ -607,6 +631,8 @@ bi_env      dd 0
 bi_log      dd 0
 bi_loglen   dd 0
 bi_opt      dd 0
+bi_eip      dd 0
+bi_err      dd 0
 
 xmove:                                  ; XMS move structure
 xm_len      dd 0

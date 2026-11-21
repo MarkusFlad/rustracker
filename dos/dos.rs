@@ -51,6 +51,10 @@ pub struct BootInfo {
     /// The value of the RTRACK environment variable (ASCIIZ), or 0: `T<n>` quits after n
     /// seconds of playback (for automatic tests).
     pub opt_phys: u32,
+    /// Written by dos/entry.asm on a CPU exception: the faulting EIP and the error code.
+    pub exc_eip: u32,
+    /// See `exc_eip`.
+    pub exc_err: u32,
 }
 
 /// Sound Blaster settings and state.
@@ -159,6 +163,15 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         LOG_P = bi.log_phys;
         LOG_LEN = bi.log_len;
         log(b"RUSTRACKER fuer DOS\r\n");
+        log(b"Programm bei ");
+        log_hex(base, 8);
+        log(b", Song bei ");
+        log_hex(bi.mod_phys, 8);
+        log(b" (");
+        log_dec(bi.mod_len);
+        log(b" Bytes), DMA-Speicher bei ");
+        log_hex(bi.dma_phys, 8);
+        log(b"\r\n");
         if bi.env_phys != 0 {
             parse_blaster(phys(bi.env_phys));
         }
@@ -199,13 +212,6 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
             log(b"Kein passender DMA-Puffer.\r\n");
             return 4;
         }
-        vis_event(2);
-        vis_set_playing(1);
-        set_palette();
-        build_tables();
-        sb_start();
-        main_loop();
-        sb_stop();
         log(b"Sound Blaster ");
         if SB.sixteen {
             log(b"16");
@@ -216,15 +222,28 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         log_hex(SB.port, 3);
         log(b", IRQ ");
         log_dec(SB.irq);
+        log(b", DMA ");
+        log_dec(if SB.sixteen { SB.dma16 } else { SB.dma8 });
         log(b", DSP ");
         log_dec(ver >> 8);
         log(b".");
         log_dec(ver & 255);
         log(b", ");
         log_dec(SB.rate);
-        log(b" Hz, ");
+        log(b" Hz, Puffer bei ");
+        log_hex(SB.buf, 8);
+        log(b"\r\n");
+        vis_event(2);
+        vis_set_playing(1);
+        set_palette();
+        build_tables();
+        log(b"Start der Wiedergabe\r\n");
+        sb_start();
+        main_loop();
+        sb_stop();
+        log(b"Ende nach ");
         log_dec(peek32(&raw const N_IRQ));
-        log(b" Bloecke.\r\nTschuess!\r\n");
+        log(b" Bloecken (Sound-Blaster-Interrupts).\r\nTschuess!\r\n");
         0
     }
 }
