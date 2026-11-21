@@ -11,6 +11,18 @@ kompiliert und spielt im Browser über ein AudioWorklet ab. Dazu gibt es ein Osz
 - [▶ Klassische Edition](https://markusflad.github.io/rustracker/): Oberfläche in HTML/Canvas, Mandelbrot auf der GPU (WebGL2) oder mit dem Rust-SIMD-Kern
 - [▶ Framebuffer-Edition](https://markusflad.github.io/rustracker/fb/): jedes Pixel von Rust gezeichnet, nur ein paar Zeilen JavaScript
 
+## Ansichten
+
+Alle Ansichten reagieren live auf die Musik. Umschalten mit **Ansicht** (in der
+Framebuffer-Edition auch mit der Taste V). Die Bilder stammen aus der klassischen Edition.
+
+| | |
+|---|---|
+| ![Oszilloskop](docs/screenshots/oszilloskop.jpg)<br>**Oszilloskop**: Master L/R, XY-Figur und eine Spur pro Kanal | ![Mandelbrot-Zoom](docs/screenshots/mandelbrot.jpg)<br>**Mandelbrot-Zoom** im Takt der Musik |
+| ![Spektrum 2D](docs/screenshots/spektrum-2d.jpg)<br>**Spektrum 2D**: FFT-Balken mit Spitzenwerten und Spektrogramm | ![Spektrum 3D](docs/screenshots/spektrum-3d.jpg)<br>**Spektrum 3D**: die letzten 4 Sekunden in die Tiefe |
+| ![Würfel](docs/screenshots/wuerfel.jpg)<br>**Würfel** mit sechs Live-Flächen | ![Voxel-Landschaft](docs/screenshots/voxel.jpg)<br>**Voxel-Landschaft** aus dem Mandelbrot-Zoom |
+| ![See aus Voxeln](docs/screenshots/see.jpg)<br>**See aus Voxeln**: Bass und Takt erzeugen Wellen | ![Framebuffer-Edition](docs/screenshots/framebuffer.jpg)<br>**Framebuffer-Edition**: jedes Pixel in Rust gezeichnet |
+
 ## Starten
 
 Ausprobieren geht am schnellsten über die Live-Demos oben. Lokal:
