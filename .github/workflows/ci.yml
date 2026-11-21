@@ -20,7 +20,7 @@ env:
 
 jobs:
   rust:
-    name: Rust (fmt, clippy, tests)
+    name: Rust (fmt, clippy, docs, tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +32,10 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+      - name: Docs (every public item documented, no broken links)
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+        env:
+          RUSTFLAGS: -D missing_docs
       - name: Tests
         run: cargo test --release
       - name: Render the demo songs natively
@@ -61,31 +65,47 @@ jobs:
           RUSTC_BOOTSTRAP=1 rustc --edition 2021 --target wasm32-unknown-unknown --crate-type cdylib \
             -C opt-level=3 -C panic=abort -C overflow-checks=no -C strip=symbols \
             -o preview/out/modplayer.wasm preview/minicore.rs
+      - name: Build the Mandelbrot SIMD kernel (kernel/mandel_wasm.rs, no_core)
+        run: |
+          RUSTC_BOOTSTRAP=1 rustc --edition 2021 --target wasm32-unknown-unknown --crate-type cdylib \
+            -C opt-level=3 -C target-feature=+simd128 -C panic=abort -C strip=symbols \
+            -o preview/out/mandel.wasm kernel/mandel_wasm.rs
       - name: Native reference render (10 s)
         run: cargo run --release --quiet --bin mod2wav -- "$DEMO_SONG" /tmp/native.wav 10
       - name: Smoke test, cargo build
         run: node tests/wasm_smoke.mjs target/wasm32-unknown-unknown/release/modplayer.wasm "$DEMO_SONG" /tmp/native.wav
       - name: Smoke test, minicore build
         run: node tests/wasm_smoke.mjs preview/out/modplayer.wasm "$DEMO_SONG" /tmp/native.wav
+      - name: Framebuffer renderer smoke test (cargo + minicore build)
+        run: |
+          node tests/vis_smoke.mjs target/wasm32-unknown-unknown/release/modplayer.wasm "$DEMO_SONG"
+          node tests/vis_smoke.mjs preview/out/modplayer.wasm "$DEMO_SONG"
+          node tests/vis_smoke.mjs target/wasm32-unknown-unknown/release/modplayer.wasm "$DEMO_SONG" preview/out/mandel.wasm
       - name: Smoke test, committed www/modplayer.wasm (only if it is in the repo)
         if: hashFiles('www/modplayer.wasm') != ''
         run: node tests/wasm_smoke.mjs www/modplayer.wasm "$DEMO_SONG"
       - name: Check the web page scripts
         run: |
-          for f in www/worklet.js www/mandel.js; do node --check "$f"; done
+          for f in www/worklet.js www/mandel.js www-fb/worklet.js; do node --check "$f"; done
           python3 - <<'EOF'
           import re, pathlib
-          html = pathlib.Path("www/index.html").read_text()
-          scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
-          pathlib.Path("/tmp/inline.js").write_text("\n".join(scripts))
+          for i, page in enumerate(["www/index.html", "www-fb/index.html"]):
+              html = pathlib.Path(page).read_text()
+              scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
+              pathlib.Path(f"/tmp/inline{i}.js").write_text("\n".join(scripts))
           EOF
-          node --check /tmp/inline.js
+          node --check /tmp/inline0.js
+          node --check /tmp/inline1.js
       - name: Assemble the site
         run: |
-          mkdir -p _site
+          mkdir -p _site/fb
           cp www/index.html www/worklet.js www/mandel.js _site/
-          cp target/wasm32-unknown-unknown/release/modplayer.wasm _site/
+          cp target/wasm32-unknown-unknown/release/modplayer.wasm preview/out/mandel.wasm _site/
           python3 scripts/embed_song.py "$DEMO_SONG" _site/song.js
+          # framebuffer edition at /fb/
+          cp www-fb/index.html www-fb/worklet.js _site/fb/
+          cp target/wasm32-unknown-unknown/release/modplayer.wasm preview/out/mandel.wasm _site/fb/
+          cp _site/song.js _site/fb/
       - uses: actions/upload-artifact@v4
         with:
           name: site
