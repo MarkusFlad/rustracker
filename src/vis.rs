@@ -260,7 +260,7 @@ pub struct Vis {
     pub(crate) vx_h: [u16; MB_MAX],
     pub(crate) vx_l: [u8; MB_MAX],
     pub(crate) vx_c: [u32; MB_MAX],
-    /// Voxel views: smooth surface instead of blocky voxels.
+    /// Voxel views: smooth surface instead of blocky voxels (the default).
     pub(crate) vx_fine: bool,
     // lake view: wave buffers, mask, height map and colours
     pub(crate) lk_a: [f32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
@@ -698,6 +698,7 @@ impl Vis {
         self.v_size = 3.0;
         self.d_order = -1;
         self.d_rowkey = 0xffff_ffff;
+        self.vx_fine = true;
         self.t0 = now;
     }
 

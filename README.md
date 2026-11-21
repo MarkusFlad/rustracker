@@ -194,7 +194,7 @@ Die sechste Ansicht zeigt einen See aus Voxeln, den die Musik zum Schwingen brin
   Blick folgt dabei so, dass der See im Bild bleibt.
 
 **Auflösung:** In beiden Voxel-Ansichten schaltet der Knopf **Grob/Fein** (Taste R, in der
-klassischen Edition „Auflösung“) zwischen den kantigen Voxeln und einer glatten Oberfläche um.
+klassischen Edition „Auflösung“) zwischen einer glatten Oberfläche (Standard) und den kantigen Voxeln um.
 Fein interpoliert Höhen und Farben bilinear zwischen den Zellen und tastet die Strahlen enger ab.
 Beim See entscheidet der feine Modus außerdem pro Bildpunkt anhand des interpolierten Abstands zur
 Uferlinie, ob Wasser, Strand oder Wiese zu sehen ist; das Ufer wird so zur glatten Kurve statt

@@ -94,7 +94,7 @@
           <button id="mEng" type="button" class="monly">Engine: GPU</button>
           <button id="mPal" type="button">Farben</button>
           <button id="s3d" type="button" class="sonly">Darstellung: 2D</button>
-          <button id="vRes" type="button">Auflösung: grob</button>
+          <button id="vRes" type="button">Auflösung: fein</button>
           <button id="mFs" type="button">Vollbild</button>
         </div>
       </div>
@@ -584,8 +584,8 @@ function drawVoxel() {
 
 const lcanvas = $('lake');
 let lake = null;
-/** Voxel views: smooth surface in full resolution instead of blocky voxels. */
-let voxelFine = false;
+/** Voxel views: smooth surface in full resolution instead of blocky voxels (the default). */
+let voxelFine = true;
 $('vRes').onclick = () => {
   voxelFine = !voxelFine;
   $('vRes').textContent = 'Auflösung: ' + (voxelFine ? 'fein' : 'grob');
