@@ -20,8 +20,7 @@ variant() {
     (cd "$TMP" && zip -q -9 -r "$OUT"/rtrack-$1.jsdos RTRACK.COM RTRACK.BIN NEON.MOD .jsdos)
 }
 variant prompt 's/^RTRACK.COM$/echo Start mit RTRACK/'
-variant max 's/^cycles=fixed 50000$/cycles=max/'
-variant fast 's/^cycles=fixed 50000$/cycles=fixed 150000/'
+variant fixed 's/^cycles=max$/cycles=fixed 50000/'
 variant dynamic 's/^core=normal$/core=dynamic/'
 variant mem16 's/^memsize=32$/memsize=16/'
 cp web/index.html "$OUT"/

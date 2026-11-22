@@ -174,18 +174,23 @@ jobs:
         run: dos/build.sh selftest
       - name: Self-test without hardware (every view, 4 s)
         run: python3 dos/selftest_check.py "$DEMO_SONG" dos-shots 4
-      - name: DOSBox, Sound Blaster 16, 8 s of playback
+      - name: DOSBox, Sound Blaster 16, 8 s of playback (dynamic core)
         # not yet a gate: emulator quirks should not block the deployment
         continue-on-error: true
-        run: dos/dosbox_test.sh
+        run: dos/dosbox_test.sh dynamic 8 dosbox
+      - name: DOSBox, 30 s of playback (normal core, as in js-dos)
+        continue-on-error: true
+        run: dos/dosbox_test.sh normal 30 normal
       - name: Pack (ZIP, js-dos bundle, page)
         run: |
           dos/package.sh dos-site
           cp dos-shots/*.png dos-site/
           # what DOSBox and RTRACK.COM printed, and the link map (to look up a crash address)
-          cp dos/out/RESULT.TXT dos-site/result.txt || true
-          cp dos/out/dosbox.log dos-site/dosbox.txt || true
-          cp dos/out/dosbox.png dos-site/dosbox.png || true
+          for n in dosbox normal; do
+            cp dos/out/$n-result.txt dos-site/ || true
+            cp dos/out/$n.log dos-site/$n.txt || true
+            cp dos/out/$n-1.png dos/out/$n-2.png dos-site/ 2>/dev/null || true
+          done
           cp dos/out/rtrack.map dos-site/rtrack.map.txt || true
       - uses: actions/upload-artifact@v4
         with:

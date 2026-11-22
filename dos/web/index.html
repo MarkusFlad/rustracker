@@ -19,7 +19,7 @@
 <body>
 <main>
   <h1>Rustracker für DOS</h1>
-  <p>Die DOS-Ausgabe des <a href="../">Rustrackers</a> in DOSBox (js-dos), mit Sound Blaster 16 und VGA 320×200.
+  <p>Die DOS-Ausgabe des <a href="../">Rustrackers</a> in DOSBox-X (js-dos), mit Sound Blaster 16 und VGA 320×200.
      Auf einem echten PC läuft dieselbe Datei: <a href="rtrack-dos.zip">rtrack-dos.zip</a>
      (RTRACK.COM, RTRACK.BIN, NEON.MOD, README.TXT).</p>
   <div id="dos"></div>
@@ -30,12 +30,12 @@
     <span><kbd>Esc</kbd> Ende</span>
   </div>
   <p>Ton startet erst nach einem Klick in das Bild (Regel der Browser).
-     Die emulierte CPU ist auf etwa 50.000 DOSBox-Zyklen eingestellt, grob ein Pentium-Rechner; die 3D-Ansichten laufen deshalb ruckelig. Schneller: <a href="?b=fast">?b=fast</a>.</p>
+     Emuliert mit DOSBox-X; die Geschwindigkeit hängt vom Rechner ab, auf dem der Browser läuft.</p>
 </main>
 <script>
   // Test switches (for tracking down emulator problems):
-  //   ?b=prompt|max|fast|dynamic|mem16  another bundle (see dos/package.sh)
-  //   ?x=1                             DOSBox-X instead of DOSBox
+  //   ?b=prompt|fixed|dynamic|mem16  another bundle (see dos/package.sh)
+  //   ?x=0                             DOSBox instead of DOSBox-X (crashed: "unreachable")
   //   ?ui=1                            js-dos side bar (menu, logs)
   const q = new URLSearchParams(location.search);
   const bundle = /^[a-z0-9]+$/.test(q.get("b") || "") ? "rtrack-" + q.get("b") + ".jsdos" : "rtrack.jsdos";
@@ -43,7 +43,7 @@
     url: bundle,
     autoStart: true,
     kiosk: q.get("ui") !== "1",
-    backend: q.get("x") === "1" ? "dosboxX" : "dosbox",
+    backend: q.get("x") === "0" ? "dosbox" : "dosboxX",
     renderBackend: "canvas",
   });
 </script>

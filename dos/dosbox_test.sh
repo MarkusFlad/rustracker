@@ -1,17 +1,22 @@
 #!/bin/sh
-# Runs RTRACK.COM for 8 seconds of playback in DOSBox (SB16, XMS, no window) and checks the
-# message it prints on exit; takes a screenshot after 6 s (dosbox.png). Needs dosbox, Xvfb
-# and ImageMagick (import).
+# Runs RTRACK.COM in DOSBox (SB16, XMS, no window) and checks the message it prints on exit.
+#   dos/dosbox_test.sh [CORE] [SECONDS] [NAME]     defaults: dynamic 8 dosbox
+# Writes, in dos/out: NAME-result.txt (what RTRACK.COM printed), NAME.log (DOSBox output,
+# including any "Exit to error"), NAME-1.png (screenshot after 6 s) and NAME-2.png (3 s
+# before the end). Needs dosbox, Xvfb and ImageMagick (import).
 set -e
+CORE=${1:-dynamic}
+SECS=${2:-8}
+NAME=${3:-dosbox}
 cd "$(dirname "$0")/out"
-cat > test.conf <<CONF
+cat > $NAME.conf <<CONF
 [sdl]
 output=surface
 [dosbox]
 machine=svga_s3
 memsize=32
 [cpu]
-core=dynamic
+core=$CORE
 cycles=max
 [mixer]
 rate=44100
@@ -27,23 +32,29 @@ ems=false
 [autoexec]
 mount c .
 c:
-set RTRACK=T8
+set RTRACK=T$SECS
 RTRACK.COM > RESULT.TXT
 exit
 CONF
-rm -f RESULT.TXT dosbox.log
+rm -f RESULT.TXT $NAME.log $NAME-result.txt $NAME-1.png $NAME-2.png
 touch RESULT.TXT
-# own X server, so a screenshot can be taken while RTRACK plays
+# own X server, so screenshots can be taken while RTRACK plays
 Xvfb :77 -screen 0 1024x768x24 >/dev/null 2>&1 &
 XPID=$!
 sleep 1
-DISPLAY=:77 SDL_AUDIODRIVER=dummy timeout 180 dosbox -conf test.conf > dosbox.log 2>&1 &
+DISPLAY=:77 SDL_AUDIODRIVER=dummy timeout $((SECS * 4 + 60)) dosbox -conf $NAME.conf > $NAME.log 2>&1 &
 DPID=$!
 sleep 6
-DISPLAY=:77 import -window root dosbox.png || echo "no screenshot" >> dosbox.log
-wait $DPID || echo "DOSBox: exit $?" >> dosbox.log
+DISPLAY=:77 import -window root $NAME-1.png || echo "no screenshot 1" >> $NAME.log
+if [ "$SECS" -gt 12 ]; then
+    sleep $((SECS - 9))
+    DISPLAY=:77 import -window root $NAME-2.png || echo "no screenshot 2" >> $NAME.log
+fi
+wait $DPID || echo "DOSBox: exit $?" >> $NAME.log
 kill $XPID 2>/dev/null || true
-cat dosbox.log
+sleep 1
+mv RESULT.TXT $NAME-result.txt
+cat $NAME.log
 echo "--- RTRACK.COM said:"
-cat RESULT.TXT
-grep -q "Tschuess" RESULT.TXT
+cat $NAME-result.txt
+grep -q "Tschuess" $NAME-result.txt
