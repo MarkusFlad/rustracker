@@ -33,7 +33,19 @@
      Die Geschwindigkeit hängt vom Rechner ab, auf dem der Browser läuft; ein Pentium 133 ist eher langsamer.</p>
 </main>
 <script>
-  Dos(document.getElementById("dos"), { url: "rtrack.jsdos", autoStart: true, kiosk: true });
+  // Test switches (for tracking down emulator problems):
+  //   ?b=prompt|fixed|dynamic|mem16  another bundle (see dos/package.sh)
+  //   ?x=1                             DOSBox-X instead of DOSBox
+  //   ?ui=1                            js-dos side bar (menu, logs)
+  const q = new URLSearchParams(location.search);
+  const bundle = /^[a-z0-9]+$/.test(q.get("b") || "") ? "rtrack-" + q.get("b") + ".jsdos" : "rtrack.jsdos";
+  Dos(document.getElementById("dos"), {
+    url: bundle,
+    autoStart: true,
+    kiosk: q.get("ui") !== "1",
+    backend: q.get("x") === "1" ? "dosboxX" : "dosbox",
+    renderBackend: "canvas",
+  });
 </script>
 </body>
 </html>

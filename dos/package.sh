@@ -14,6 +14,15 @@ rm -f "$OUT"/rtrack-dos.zip "$OUT"/rtrack.jsdos
 mkdir -p "$TMP"/.jsdos
 cp web/dosbox.conf "$TMP"/.jsdos/dosbox.conf
 (cd "$TMP" && zip -q -9 -r "$OUT"/rtrack.jsdos RTRACK.COM RTRACK.BIN NEON.MOD .jsdos)
+# variants for tracking down emulator problems (index.html?b=NAME)
+variant() {
+    sed "$2" web/dosbox.conf > "$TMP"/.jsdos/dosbox.conf
+    (cd "$TMP" && zip -q -9 -r "$OUT"/rtrack-$1.jsdos RTRACK.COM RTRACK.BIN NEON.MOD .jsdos)
+}
+variant prompt 's/^RTRACK.COM$/echo Start mit RTRACK/'
+variant fixed 's/^cycles=max$/cycles=fixed 50000/'
+variant dynamic 's/^core=normal$/core=dynamic/'
+variant mem16 's/^memsize=32$/memsize=16/'
 cp web/index.html "$OUT"/
 rm -rf "$TMP"
 ls -l "$OUT"
