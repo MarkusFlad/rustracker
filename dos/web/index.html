@@ -4,48 +4,73 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rustracker für DOS</title>
-<link rel="stylesheet" href="https://v8.js-dos.com/latest/js-dos.css">
-<script src="https://v8.js-dos.com/latest/js-dos.js"></script>
 <style>
-  body { margin: 0; background: #05080a; color: #9fe8b8; font: 15px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+  body { margin: 0; background: #05080a; color: #9fe8b8; font: 15px/1.55 ui-monospace, Menlo, Consolas, monospace; }
   main { max-width: 980px; margin: 0 auto; padding: 18px; }
   h1 { color: #ffb347; font-size: 22px; margin: 0 0 6px; }
+  h2 { color: #ffb347; font-size: 17px; margin: 28px 0 8px; }
   a { color: #7fd7ff; }
-  #dos { width: 100%; aspect-ratio: 4 / 3; background: #000; border: 1px solid #1f4d33; }
+  img { width: 100%; image-rendering: pixelated; border: 1px solid #1f4d33; background: #000; display: block; }
+  figure { margin: 0; }
+  figcaption { color: #6fa883; font-size: 13px; margin: 4px 0 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+  .big { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 700px) { .big { grid-template-columns: 1fr; } }
+  pre { background: #0b1410; border: 1px solid #1f4d33; padding: 10px 12px; overflow-x: auto; color: #d8ffe6; }
   kbd { border: 1px solid #2f6b47; border-radius: 3px; padding: 0 4px; color: #d8ffe6; }
-  .row { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0; }
+  .dl { display: inline-block; margin: 8px 0; padding: 8px 14px; border: 1px solid #3fae6c; border-radius: 4px; text-decoration: none; color: #d8ffe6; }
+  td { padding: 2px 14px 2px 0; vertical-align: top; }
 </style>
 </head>
 <body>
 <main>
   <h1>Rustracker für DOS</h1>
-  <p>Die DOS-Ausgabe des <a href="../">Rustrackers</a> in DOSBox-X (js-dos), mit Sound Blaster 16 und VGA 320×200.
-     Auf einem echten PC läuft dieselbe Datei: <a href="rtrack-dos.zip">rtrack-dos.zip</a>
-     (RTRACK.COM, RTRACK.BIN, NEON.MOD, README.TXT).</p>
-  <div id="dos"></div>
-  <div class="row">
-    <span><kbd>V</kbd> Ansicht</span><span><kbd>Leertaste</kbd> Pause</span><span><kbd>S</kbd> Stopp</span>
-    <span><kbd>←</kbd>/<kbd>→</kbd> Position</span><span><kbd>3</kbd> Spektrum 2D/3D</span>
-    <span><kbd>P</kbd> Palette</span><span><kbd>R</kbd> Voxel grob/fein</span><span><kbd>F</kbd> nur Ansicht</span>
-    <span><kbd>Esc</kbd> Ende</span>
+  <p>Der <a href="../">Rustracker</a> auf einem Pentium mit VGA (320×200, 256 Farben) und Sound Blaster:
+     derselbe Rust-Code wie im Browser, dazu ein kleiner Lader in Assembler. Die Bilder unten stammen aus dem
+     letzten Lauf der Continuous Integration, in der das Programm in DOSBox spielt.</p>
+  <a class="dl" href="rtrack-dos.zip">⬇ rtrack-dos.zip</a>
+  <span style="color:#6fa883">RTRACK.COM, RTRACK.BIN, NEON.MOD, README.TXT, dosbox.conf</span>
+
+  <h2>In DOSBox (aus der CI)</h2>
+  <div class="big">
+    <figure><img src="dosbox-1.png" alt="DOSBox-Screenshot nach 6 Sekunden"><figcaption>DOSBox, dynamischer CPU-Kern, nach 6 s</figcaption></figure>
+    <figure><img src="normal-2.png" alt="DOSBox-Screenshot nach 27 Sekunden"><figcaption>DOSBox, normaler CPU-Kern, nach 27 s</figcaption></figure>
   </div>
-  <p>Ton startet erst nach einem Klick in das Bild (Regel der Browser).
-     Emuliert mit DOSBox-X; die Geschwindigkeit hängt vom Rechner ab, auf dem der Browser läuft.</p>
+  <p>Was <code>RTRACK.COM</code> dabei ausgegeben hat:</p>
+  <pre id="log">(wird geladen …)</pre>
+
+  <h2>Alle Ansichten (Testrahmen ohne Hardware)</h2>
+  <div class="grid">
+    <figure><img src="osci.png" alt=""><figcaption>Oszilloskop</figcaption></figure>
+    <figure><img src="spektrum.png" alt=""><figcaption>Spektrum</figcaption></figure>
+    <figure><img src="mandel.png" alt=""><figcaption>Mandelbrot</figcaption></figure>
+    <figure><img src="wuerfel.png" alt=""><figcaption>Würfel</figcaption></figure>
+    <figure><img src="voxel.png" alt=""><figcaption>Voxel</figcaption></figure>
+    <figure><img src="see.png" alt=""><figcaption>See</figcaption></figure>
+    <figure><img src="amiga.png" alt=""><figcaption>Amiga</figcaption></figure>
+  </div>
+
+  <h2>Selbst ausprobieren</h2>
+  <p><b>DOSBox:</b> ZIP entpacken und im entpackten Ordner <code>dosbox -conf dosbox.conf</code> starten
+     (Sound Blaster 16, 32 MB, startet den Tracker direkt).</p>
+  <p><b>Echter PC:</b> <code>RTRACK</code> oder <code>RTRACK DATEI.MOD</code>. Nötig sind ein Pentium (386 geht, ist aber langsam),
+     16 MB RAM, VGA, ein Sound Blaster 16 oder 2.0/Pro mit gesetzter Variable
+     <code>BLASTER</code> (z. B. <code>SET BLASTER=A220 I5 D1 H5 T6</code>) und DOS ohne EMM386 oder QEMM
+     (HIMEM.SYS ist in Ordnung, keine Windows-DOS-Box).</p>
+  <table>
+    <tr><td><kbd>V</kbd></td><td>nächste Ansicht</td><td><kbd>Leertaste</kbd></td><td>Pause</td></tr>
+    <tr><td><kbd>S</kbd></td><td>Stopp</td><td><kbd>←</kbd> <kbd>→</kbd></td><td>Position</td></tr>
+    <tr><td><kbd>3</kbd></td><td>Spektrum 2D/3D</td><td><kbd>P</kbd></td><td>Palette</td></tr>
+    <tr><td><kbd>R</kbd></td><td>Voxel grob/fein</td><td><kbd>F</kbd></td><td>nur die Ansicht</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Ende</td><td></td><td></td></tr>
+  </table>
+  <p>Eine Einbettung mit js-dos (DOSBox im Browser) haben wir versucht: dessen Emulator stürzt schon an der
+     DOS-Eingabeaufforderung ab, unabhängig vom Rustracker. Deshalb hier Bilder statt Emulator.</p>
 </main>
 <script>
-  // Test switches (for tracking down emulator problems):
-  //   ?b=prompt|fixed|dynamic|mem16  another bundle (see dos/package.sh)
-  //   ?x=0                             DOSBox instead of DOSBox-X (crashed: "unreachable")
-  //   ?ui=1                            js-dos side bar (menu, logs)
-  const q = new URLSearchParams(location.search);
-  const bundle = /^[a-z0-9]+$/.test(q.get("b") || "") ? "rtrack-" + q.get("b") + ".jsdos" : "rtrack.jsdos";
-  Dos(document.getElementById("dos"), {
-    url: bundle,
-    autoStart: true,
-    kiosk: q.get("ui") !== "1",
-    backend: q.get("x") === "0" ? "dosbox" : "dosboxX",
-    renderBackend: "canvas",
-  });
+  fetch("normal-result.txt").then(r => r.ok ? r.text() : Promise.reject())
+    .then(t => { document.getElementById("log").textContent = t.trim(); })
+    .catch(() => { document.getElementById("log").textContent = "(nicht vorhanden)"; });
 </script>
 </body>
 </html>

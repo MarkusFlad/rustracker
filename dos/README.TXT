@@ -29,7 +29,7 @@ Voraussetzungen
     einer Windows-DOS-Box. Am einfachsten: beim Start F8 druecken und EMM386
     ueberspringen, oder eine Bootdiskette ohne Speichermanager.
 
-Das Programm laeuft auch in DOSBox (sbtype=sb16, memsize=16 oder mehr).
+Das Programm laeuft auch in DOSBox: dosbox -conf dosbox.conf (liegt bei).
 
 Fuer automatische Tests: SET RTRACK=T10 beendet nach 10 Sekunden Wiedergabe.
 

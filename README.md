@@ -11,7 +11,7 @@ kompiliert und spielt im Browser über ein AudioWorklet ab. Dazu gibt es ein Osz
 - [▶ Klassische Edition](https://markusflad.github.io/rustracker/): Oberfläche in HTML/Canvas, Mandelbrot auf der GPU (WebGL2) oder mit dem Rust-SIMD-Kern
 - [▶ Framebuffer-Edition](https://markusflad.github.io/rustracker/fb/): jedes Pixel von Rust gezeichnet, nur ein paar Zeilen JavaScript
 - [▶ Promo-Video](https://markusflad.github.io/rustracker/video/): gut eine Minute Rustracker, gerendert vom Rustracker selbst
-- [▶ DOS-Edition](https://markusflad.github.io/rustracker/dos/): derselbe Rust-Code für Pentium, VGA 320×200 und Sound Blaster, im Browser über js-dos (DOSBox); dort auch die ZIP für einen echten PC
+- [▶ DOS-Edition](https://markusflad.github.io/rustracker/dos/): derselbe Rust-Code für Pentium, VGA 320×200 und Sound Blaster, mit Screenshots aus DOSBox und der ZIP für einen echten PC oder DOSBox
 
 [![Promo-Video](https://markusflad.github.io/rustracker/video/rustracker_thumbnail.jpg)](https://markusflad.github.io/rustracker/video/)
 
@@ -246,7 +246,7 @@ Sie steckt in `src/vis_amiga.rs` und wird in beiden Editionen von Rust gezeichne
 | **WebAssembly** | Build mit `cargo` für `wasm32-unknown-unknown` **und** über `preview/minicore.rs`. Der zweite Build stellt sicher, dass die Bibliothek weiterhin nur den Sprachkern nutzt. Dazu kommt der Mandelbrot-SIMD-Kern (`mandel.wasm`). Danach laufen in Node `tests/wasm_smoke.mjs` (Exporte, Laden, Klang, FFT, Vergleich mit dem nativen Rendern auf ±2 LSB) und `tests/vis_smoke.mjs` (Framebuffer-Renderer, mit und ohne SIMD-Kern). Zum Schluss werden die Skripte beider Seiten geprüft und die Website als Artefakt `site` gebaut. |
 | **Songs** | Erzeugt die beiden eigenen Songs neu aus `songs/*.py` und prüft, dass der Rust-Player sie abspielt |
 | **Video** | Nicht bei Pull Requests: rendert das Promo-Video mit `tools/promo/make_video.sh` (siehe unten) und stellt es als Artefakt `video` bereit |
-| **DOS** | Baut die DOS-Edition (`dos/build.sh`), lässt sie im Linux-Testrahmen ohne Hardware durch alle Ansichten laufen (`dos/selftest_check.py`), spielt sie 8 Sekunden in DOSBox mit Sound Blaster 16 ab (`dos/dosbox_test.sh`, noch nicht blockierend) und packt ZIP, js-dos-Bündel und Seite als Artefakt `dos` |
+| **DOS** | Baut die DOS-Edition (`dos/build.sh`), lässt sie im Linux-Testrahmen ohne Hardware durch alle Ansichten laufen (`dos/selftest_check.py`), spielt sie in DOSBox mit Sound Blaster 16 ab (`dos/dosbox_test.sh`: 8 s mit dynamischem, 30 s mit normalem CPU-Kern, mit Screenshots; noch nicht blockierend) und packt ZIP, Seite und Bilder als Artefakt `dos` |
 | **Pages** | Nur bei Push auf den Standard-Branch (`main` oder `master`): veröffentlicht beide Editionen mit „Neon Techno“ auf GitHub Pages (klassisch unter `/`, Framebuffer unter `/fb/`), das Promo-Video unter `/video/` und die DOS-Edition unter `/dos/` |
 
 Für GitHub Pages musst du einmalig unter *Settings → Pages → Source* „GitHub Actions“ wählen.
@@ -287,7 +287,7 @@ Bauen (braucht `nasm`, `ld.lld` und das Target `i586-unknown-linux-gnu`):
 rustup target add i586-unknown-linux-gnu
 dos/build.sh selftest                                   # -> dos/out/RTRACK.COM, RTRACK.BIN, NEON.MOD
 python3 dos/selftest_check.py www/drozerix_-_neon_techno.mod /tmp/dos   # alle Ansichten als PNG
-dos/package.sh /tmp/dos-site                            # ZIP, js-dos-Bündel, Seite
+dos/package.sh /tmp/dos-site                            # ZIP und Seite
 ```
 
 Auf dem PC: `RTRACK [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet). Nötig sind
