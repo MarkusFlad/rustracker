@@ -294,12 +294,16 @@ python3 dos/selftest_check.py www/drozerix_-_neon_techno.mod /tmp/dos   # alle A
 dos/package.sh /tmp/dos-site                            # ZIP und Seite
 ```
 
-Auf dem PC: `RTRACK [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet). Nötig sind
+Auf dem PC: `RTRACK [/M] [/V] [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet).
+Mandelbrot-Zoom (`/M`) und Voxel-Landschaft (`/V`) rechnen auf einem Pentium und in DOSBox
+mehrere Sekunden pro Bild und sind deshalb nur auf Wunsch dabei. Nötig sind
 16 MB RAM (das Programm belegt etwa 10 MB), die Variable `BLASTER` und DOS im Real Mode:
 HIMEM.SYS ist in Ordnung, EMM386, QEMM oder eine Windows-DOS-Box nicht. Pattern-Tabelle,
 Oszilloskop, Spektrum und Demoszene-Ansicht sind auf einen Pentium 133 ausgelegt; Mandelbrot,
 Würfel, Voxel und See rechnen dort nur wenige Bilder pro Sekunde. Die Musik läuft im Interrupt
-und stockt deshalb auch dann nicht. Details stehen in `dos/README.TXT`.
+und stockt deshalb auch dann nicht. Wie alles zusammenspielt – Lader, Protected Mode, der Weg der Bilder in den VGA-Speicher und
+der Klänge über DMA zum Sound Blaster – beschreibt [docs/DOS.md](docs/DOS.md); die Kurzanleitung
+für den PC steht in `dos/README.TXT`.
 
 ## Promo-Video
 

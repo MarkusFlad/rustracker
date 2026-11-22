@@ -43,9 +43,9 @@
   <div class="grid">
     <figure><img src="osci.png" alt=""><figcaption>Oszilloskop</figcaption></figure>
     <figure><img src="spektrum.png" alt=""><figcaption>Spektrum</figcaption></figure>
-    <figure><img src="mandel.png" alt=""><figcaption>Mandelbrot</figcaption></figure>
+    <figure><img src="mandel.png" alt=""><figcaption>Mandelbrot (Option /M)</figcaption></figure>
     <figure><img src="wuerfel.png" alt=""><figcaption>Würfel</figcaption></figure>
-    <figure><img src="voxel.png" alt=""><figcaption>Voxel</figcaption></figure>
+    <figure><img src="voxel.png" alt=""><figcaption>Voxel (Option /V)</figcaption></figure>
     <figure><img src="see.png" alt=""><figcaption>See</figcaption></figure>
     <figure><img src="demo.png" alt=""><figcaption>Demoszene</figcaption></figure>
   </div>
@@ -53,7 +53,7 @@
   <h2>Selbst ausprobieren</h2>
   <p><b>DOSBox:</b> ZIP entpacken und im entpackten Ordner <code>dosbox -conf dosbox.conf</code> starten
      (Sound Blaster 16, 32 MB, startet den Tracker direkt).</p>
-  <p><b>Echter PC:</b> <code>RTRACK</code> oder <code>RTRACK DATEI.MOD</code>. Nötig sind ein Pentium (386 geht, ist aber langsam),
+  <p><b>Echter PC:</b> <code>RTRACK</code> oder <code>RTRACK DATEI.MOD</code>. Mandelbrot-Zoom und Voxel-Landschaft rechnen mehrere Sekunden pro Bild und kommen nur mit <code>/M</code> bzw. <code>/V</code> dazu (z.&nbsp;B. <code>RTRACK /M /V</code>). Nötig sind ein Pentium (386 geht, ist aber langsam),
      16 MB RAM, VGA, ein Sound Blaster 16 oder 2.0/Pro mit gesetzter Variable
      <code>BLASTER</code> (z. B. <code>SET BLASTER=A220 I5 D1 H5 T6</code>) und DOS ohne EMM386 oder QEMM
      (HIMEM.SYS ist in Ordnung, keine Windows-DOS-Box).</p>
@@ -64,6 +64,7 @@
     <tr><td><kbd>R</kbd></td><td>Voxel grob/fein</td><td><kbd>F</kbd></td><td>nur die Ansicht</td></tr>
     <tr><td><kbd>Esc</kbd></td><td>Ende</td><td></td><td></td></tr>
   </table>
+  <p>Wie die DOS-Edition gebaut ist (Lader, Protected Mode, Sound Blaster, VGA-Palette): <a href="https://github.com/MarkusFlad/rustracker/blob/main/docs/DOS.md">docs/DOS.md</a>.</p>
   <p>Eine Einbettung mit js-dos (DOSBox im Browser) haben wir versucht: dessen Emulator stürzt schon an der
      DOS-Eingabeaufforderung ab, unabhängig vom Rustracker. Deshalb hier Bilder statt Emulator.</p>
 </main>

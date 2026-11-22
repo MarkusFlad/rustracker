@@ -367,6 +367,16 @@ pub extern "C" fn vis_set_fine(on: i32) {
     vis().set_fine(on != 0)
 }
 
+/// Views the view button (and the V key) steps through; the oscilloscope always stays in.
+///
+/// # Arguments
+/// * `mask` - bit `v` set: view `v` is included (numbers as in [`vis_view`]); all are
+///   included by default
+#[no_mangle]
+pub extern "C" fn vis_set_views(mask: u32) {
+    vis().set_views(mask)
+}
+
 /// Width of the last frame.
 ///
 /// # Returns

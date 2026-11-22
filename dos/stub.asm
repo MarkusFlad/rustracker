@@ -1,5 +1,6 @@
 ; RTRACK.COM: DOS loader of the Rustracker.
-;   RTRACK [song.mod]          (without a name: NEON.MOD next to RTRACK.COM)
+;   RTRACK [options] [song.mod]   (without a name: NEON.MOD next to RTRACK.COM)
+;   options: /M Mandelbrot zoom, /V voxel landscape (slow views, off by default), /? help
 ; Loads RTRACK.BIN (32-bit image, see entry.asm) and the song into extended memory (XMS
 ; when HIMEM.SYS is loaded, otherwise the memory reported by INT 15h/88h above 1.1 MB),
 ; reserves a DMA buffer in conventional memory, switches to VGA mode 13h and starts the
@@ -140,6 +141,9 @@ start:
     mov eax, [cs_phys]
     add eax, logbuf
     mov [bi_log], eax
+    mov eax, [cs_phys]          ; command line: length byte at PSP:80h, text after it
+    add eax, 80h
+    mov [bi_cmd], eax
     mov dword [bi_loglen], LOG_SIZE
 
     mov eax, [base]             ; descriptors: flat 32-bit code/data at the image,
@@ -488,7 +492,8 @@ strcpy:                         ; ds:si -> es:di including the 0
     jnz strcpy
     ret
 
-; ---- first word of the command line replaces the default song
+; ---- first word of the command line that is not an option (/x or -x) replaces the default
+;      song; the options are read by RTRACK.BIN from the command line itself
 parse_cmdline:
     mov si, 81h
     movzx cx, byte [80h]
@@ -503,6 +508,10 @@ parse_cmdline:
     je .skip
     cmp al, 13
     je .none
+    cmp al, '/'                 ; an option (for RTRACK.BIN): skip the word
+    je .option
+    cmp al, '-'
+    je .option
     dec si
     mov di, modpath
 .copy:
@@ -518,6 +527,13 @@ parse_cmdline:
     mov byte [di], 0
 .none:
     ret
+.option:
+    cmp si, cx
+    jae .none
+    lodsb
+    cmp al, ' '
+    ja .option
+    jmp .skip
 
 ; ---- environment variable (si = 'NAME=', cx = its length) -> physical address of its value
 ;      in eax (0 if missing)
@@ -633,6 +649,7 @@ bi_loglen   dd 0
 bi_opt      dd 0
 bi_eip      dd 0
 bi_err      dd 0
+bi_cmd      dd 0
 
 xmove:                                  ; XMS move structure
 xm_len      dd 0

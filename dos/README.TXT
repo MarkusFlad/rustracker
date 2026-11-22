@@ -4,13 +4,20 @@ RUSTRACKER fuer DOS
 Ein MOD-Player mit Pattern-Anzeige, Oszilloskop, Spektrum, Mandelbrot-, Wuerfel-,
 Voxel-, See- und Demoszene-Ansicht, geschrieben in Rust (ohne Standardbibliothek).
 
-Aufruf:   RTRACK [datei.mod]      (ohne Namen: NEON.MOD)
+Aufruf:   RTRACK [Optionen] [datei.mod]      (ohne Namen: NEON.MOD)
+
+Optionen: /M   Mandelbrot-Zoom zuschalten
+          /V   Voxel-Landschaft (3D-Mandelbrot) zuschalten
+          /?   Hilfe
+          Beide Ansichten rechnen auf einem Pentium oder in DOSBox mehrere
+          Sekunden pro Bild und sind deshalb ohne Option nicht dabei.
+          Beispiel: RTRACK /M /V NEON.MOD
 
 Tasten:   Esc        Ende
           Leertaste  Pause
           S          Stopp (an den Anfang)
           Links/Rechts  vorige/naechste Position
-          V          naechste Ansicht
+          V          naechste Ansicht (nur die freigeschalteten)
           3          Spektrum 2D/3D
           P          Farbpalette (Mandelbrot, Voxel)
           R          Voxel grob/fein

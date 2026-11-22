@@ -19,4 +19,10 @@ if [ "$1" = selftest ]; then
     nasm -f elf32 selftest.asm -o $OUT/selftest.o
     ld.lld -m elf_i386 -static -e _start $OUT/selftest.o $OUT/rtrack.o $OUT/rt.o -o $OUT/selftest
 fi
+# the renderer state must stay in .bss (zero-initialised); one non-zero field in it moves
+# megabytes into the file
+if [ $(stat -c %s $OUT/RTRACK.BIN) -gt 1048576 ]; then
+    echo "RTRACK.BIN is larger than 1 MB: is a large static no longer zero-initialised?" >&2
+    exit 1
+fi
 ls -l $OUT/RTRACK.COM $OUT/RTRACK.BIN

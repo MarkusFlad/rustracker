@@ -231,6 +231,10 @@ pub struct Vis {
     pub(crate) v_rot: f64,
     // ui state
     pub(crate) view: u32,
+    /// Views the view button skips (bit `v` for view `v`). Zero by default: a non-zero
+    /// initial value would move the whole renderer state from .bss to .data, which makes
+    /// the DOS image several megabytes larger.
+    pub(crate) view_off: u32,
     pub(crate) spec3d: bool,
     pub(crate) fullscreen: bool,
     pub(crate) playing: bool,
@@ -371,6 +375,7 @@ impl Vis {
             v_size: 0.0,
             v_rot: 0.0,
             view: 0,
+            view_off: 0,
             spec3d: false,
             fullscreen: false,
             playing: false,
@@ -745,6 +750,27 @@ impl Vis {
         self.vx_fine = on;
     }
 
+    /// Chooses the views the view button steps through; the oscilloscope always stays.
+    ///
+    /// # Arguments
+    /// * `mask` - bit `v` set: view `v` is included (see [`vis_view`](crate::api::vis_view))
+    pub fn set_views(&mut self, mask: u32) {
+        self.view_off = ((1 << N_VIEWS) - 1) & (0x7FFF_FFFF ^ (mask | 1));
+        if self.view_off & (1 << self.view) != 0 {
+            self.view = V_OSC;
+            self.f_valid = false;
+        }
+    }
+
+    /// The view after `v` among the enabled ones.
+    pub(crate) fn next_view(&self, v: u32) -> u32 {
+        let mut n = (v + 1) % N_VIEWS;
+        while self.view_off & (1 << n) != 0 {
+            n = (n + 1) % N_VIEWS;
+        }
+        n
+    }
+
     /// Clamps the frame size to the framebuffer.
     fn set_size(&mut self, w: i32, h: i32) {
         let mut w = imax(w, 64);
@@ -877,4 +903,34 @@ fn font_scale(css: f64, w: i32, h: i32) -> i32 {
         fs -= 1;
     }
     imax(fs, 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn view_button_skips_disabled_views() {
+        static mut V: Vis = Vis::new();
+        let v = unsafe { &mut *(&raw mut V) };
+        assert_eq!(v.next_view(V_OSC), V_MANDEL);
+        v.set_views(0x6D); // without Mandelbrot (1) and voxel (4)
+        let mut seen = [false; N_VIEWS as usize];
+        let mut cur = V_OSC;
+        for _ in 0..N_VIEWS {
+            cur = v.next_view(cur);
+            seen[cur as usize] = true;
+        }
+        assert!(!seen[V_MANDEL as usize] && !seen[V_VOXEL as usize]);
+        assert!(
+            seen[V_SPEC as usize]
+                && seen[V_CUBE as usize]
+                && seen[V_LAKE as usize]
+                && seen[V_DEMO as usize]
+        );
+        v.view = V_VOXEL;
+        v.set_views(0); // the oscilloscope always stays; a disabled current view falls back
+        assert_eq!(v.view, V_OSC);
+        assert_eq!(v.next_view(V_OSC), V_OSC);
+    }
 }

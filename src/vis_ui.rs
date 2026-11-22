@@ -71,7 +71,7 @@ impl Vis {
             return ACT_OPEN;
         }
         if id == B_VIEW {
-            self.view = (self.view + 1) % N_VIEWS;
+            self.view = self.next_view(self.view);
             self.f_valid = false;
             return ACT_NONE;
         }

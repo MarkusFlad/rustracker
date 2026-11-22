@@ -56,6 +56,8 @@ pub struct BootInfo {
     pub exc_eip: u32,
     /// See `exc_eip`.
     pub exc_err: u32,
+    /// The DOS command line: a length byte followed by the text (PSP offset 80h).
+    pub cmd_phys: u32,
 }
 
 /// Sound Blaster settings and state.
@@ -192,6 +194,9 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         log(b"\r\n");
         if bi.env_phys != 0 {
             parse_blaster(phys(bi.env_phys));
+        }
+        if !parse_options(phys(bi.cmd_phys)) {
+            return 0;
         }
         if bi.opt_phys != 0 {
             let o = phys(bi.opt_phys);
@@ -513,6 +518,40 @@ unsafe fn capture(mix: usize) {
         (MIXED as f64 * BLOCK as f64 * 1000.0 / SB.rate as f64) as u32,
     ];
     poke32(&raw mut PEND_READY, 1);
+}
+
+/// Views without a command-line option: all but Mandelbrot zoom (1) and voxel landscape (4),
+/// which take several seconds per picture in DOSBox and on a slow Pentium.
+const DEFAULT_VIEWS: u32 = 0x6D; // 0b110_1101
+
+/// Reads the options of the command line `p` (length byte, then the text): /M adds the
+/// Mandelbrot zoom, /V the voxel landscape, /? only prints the help. Words without / or -
+/// are the song (RTRACK.COM loads it). Returns false when the program should not start.
+unsafe fn parse_options(p: usize) -> bool {
+    let len = *(p as *const u8) as usize;
+    let mut views = DEFAULT_VIEWS;
+    let mut i = 1;
+    while i <= len {
+        let c = *((p + i) as *const u8) as u32;
+        let word_start = i == 1 || *((p + i - 1) as *const u8) as u32 <= 32;
+        if word_start && (c == 47 || c == 45) && i < len {
+            let o = *((p + i + 1) as *const u8) as u32 & 0xDF; // upper case
+            if o == 77 {
+                views = views | (1 << 1); // M
+            } else if o == 86 {
+                views = views | (1 << 4); // V
+            } else {
+                log(b"RTRACK [Optionen] [DATEI.MOD]\r\n");
+                log(b"  /M  Mandelbrot-Zoom zuschalten (langsam)\r\n");
+                log(b"  /V  Voxel-Landschaft zuschalten (sehr langsam)\r\n");
+                log(b"  /?  diese Hilfe\r\n");
+                return false;
+            }
+        }
+        i += 1;
+    }
+    vis_set_views(views);
+    true
 }
 
 /// BLASTER=A220 I5 D1 H5 T6: port, interrupt, 8-bit and 16-bit DMA channels.
