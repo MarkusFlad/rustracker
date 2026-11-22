@@ -78,7 +78,7 @@ pub(crate) const V_SPEC: u32 = 2;
 pub(crate) const V_CUBE: u32 = 3;
 pub(crate) const V_VOXEL: u32 = 4;
 pub(crate) const V_LAKE: u32 = 5;
-pub(crate) const V_AMIGA: u32 = 6;
+pub(crate) const V_DEMO: u32 = 6;
 /// Number of views.
 pub(crate) const N_VIEWS: u32 = 7;
 
@@ -289,16 +289,20 @@ pub struct Vis {
     pub(crate) lk_sc: [u32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
     pub(crate) lk_wh: [u16; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
     pub(crate) lk_wc: [u32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
-    // Amiga view: scroll text, starfield, note flashes
-    pub(crate) am_ready: bool,
-    pub(crate) am_text: [u8; crate::vis_amiga::AM_TEXT],
-    pub(crate) am_len: usize,
-    pub(crate) am_scroll: f64,
-    pub(crate) am_stars: [f32; 3 * crate::vis_amiga::AM_STARS],
-    pub(crate) am_seed: u32,
-    pub(crate) am_flash: [f32; 8],
-    pub(crate) am_rowkey: u32,
-    pub(crate) am_pulse: f64,
+    // demo-scene view: scroll text, starfield, note flashes, tables of the effects
+    pub(crate) dm_ready: bool,
+    pub(crate) dm_text: [u8; crate::vis_demo::DM_TEXT],
+    pub(crate) dm_len: usize,
+    pub(crate) dm_scroll: f64,
+    pub(crate) dm_stars: [f32; 3 * crate::vis_demo::DM_STARS],
+    pub(crate) dm_seed: u32,
+    pub(crate) dm_flash: [f32; 8],
+    pub(crate) dm_rowkey: u32,
+    pub(crate) dm_pulse: f64,
+    pub(crate) dm_sin: [i32; 256],
+    pub(crate) dm_plasma_pal: [u32; 256],
+    pub(crate) dm_tex_pal: [u32; 256],
+    pub(crate) dm_tex: [u8; 65536],
 }
 
 impl Vis {
@@ -421,15 +425,19 @@ impl Vis {
             lk_sc: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
             lk_wh: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
             lk_wc: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
-            am_ready: false,
-            am_text: [0; crate::vis_amiga::AM_TEXT],
-            am_len: 0,
-            am_scroll: 0.0,
-            am_stars: [0.0; 3 * crate::vis_amiga::AM_STARS],
-            am_seed: 0,
-            am_flash: [0.0; 8],
-            am_rowkey: 0,
-            am_pulse: 0.0,
+            dm_ready: false,
+            dm_text: [0; crate::vis_demo::DM_TEXT],
+            dm_len: 0,
+            dm_scroll: 0.0,
+            dm_stars: [0.0; 3 * crate::vis_demo::DM_STARS],
+            dm_seed: 0,
+            dm_flash: [0.0; 8],
+            dm_rowkey: 0,
+            dm_pulse: 0.0,
+            dm_sin: [0; 256],
+            dm_plasma_pal: [0; 256],
+            dm_tex_pal: [0; 256],
+            dm_tex: [0; 65536],
         }
     }
 
@@ -609,7 +617,7 @@ impl Vis {
         }
         self.d_order = -1;
         self.ended = false;
-        self.am_ready = false;
+        self.dm_ready = false;
     }
 
     /// Tells the renderer whether the song is playing (button label, animation of time-based
@@ -691,7 +699,7 @@ impl Vis {
     ///
     /// # Arguments
     /// * `view` - the view: 0 oscilloscope, 1 Mandelbrot, 2 spectrum, 3 cube, 4 voxel
-    ///   landscape, 5 lake, 6 Amiga demo (larger values: lake)
+    ///   landscape, 5 lake, 6 demo scene (larger values: lake)
     /// * `now` - time in ms (performance.now())
     /// * `w` - wanted width in pixels
     /// * `h` - wanted height in pixels (clamped like in [`Vis::frame`])
@@ -848,7 +856,7 @@ impl Vis {
         } else if self.view == V_LAKE {
             self.draw_lake(v, now, dt, cur);
         } else {
-            self.draw_amiga(v, now, dt, cur, pl);
+            self.draw_demo(v, now, dt, cur, pl);
         }
     }
 }

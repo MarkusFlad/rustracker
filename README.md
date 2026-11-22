@@ -25,7 +25,7 @@ Framebuffer-Edition auch mit der Taste V). Die Bilder stammen aus der klassische
 | ![Oszilloskop](docs/screenshots/oszilloskop.jpg)<br>**Oszilloskop**: Master L/R, XY-Figur und eine Spur pro Kanal | ![Mandelbrot-Zoom](docs/screenshots/mandelbrot.jpg)<br>**Mandelbrot-Zoom** im Takt der Musik |
 | ![Spektrum 2D](docs/screenshots/spektrum-2d.jpg)<br>**Spektrum 2D**: FFT-Balken mit Spitzenwerten und Spektrogramm | ![Spektrum 3D](docs/screenshots/spektrum-3d.jpg)<br>**Spektrum 3D**: die letzten 4 Sekunden in die Tiefe |
 | ![Würfel](docs/screenshots/wuerfel.jpg)<br>**Würfel** mit sechs Live-Flächen | ![Voxel-Landschaft](docs/screenshots/voxel.jpg)<br>**Voxel-Landschaft** aus dem Mandelbrot-Zoom |
-| ![See aus Voxeln](docs/screenshots/see.jpg)<br>**See aus Voxeln**: Bass und Takt erzeugen Wellen | ![Amiga-Demo](docs/screenshots/amiga.jpg)<br>**Amiga-Demo**: Copper-Bars, Sinus-Scroller, Sternenfeld |
+| ![See aus Voxeln](docs/screenshots/see.jpg)<br>**See aus Voxeln**: Bass und Takt erzeugen Wellen | ![Demoszene](docs/screenshots/demo.jpg)<br>**Demoszene**: Copper-Bars, Plasma, Rotozoomer, Rasterzeilen, Sinus-Scroller |
 | ![Framebuffer-Edition](docs/screenshots/framebuffer.jpg)<br>**Framebuffer-Edition**: jedes Pixel in Rust gezeichnet | |
 
 ## Starten
@@ -221,20 +221,24 @@ gibt ihr Song und Worklet-Daten und lässt sie mit `vis_view` nur die jeweilige 
 (Anbindung in `www/rustvis.js`, die auch die Framebuffer-Edition nutzt). So gibt es den
 Algorithmus nur einmal, und er läuft überall als kompiliertes WebAssembly.
 
-## Amiga-Ansicht
+## Demoszene-Ansicht
 
-Die siebte Ansicht ist eine Verbeugung vor den Amiga-Demos, aus denen das MOD-Format stammt:
+Die siebte Ansicht ist eine Verbeugung vor der Demoszene, in der Tracker und das MOD-Format groß
+geworden sind. Mit jeder neuen Song-Position wechselt sie zum nächsten klassischen Effekt:
 
-- **Copper-Bars:** ein schimmernder Farbbalken pro Kanal, der auf einer Sinusbahn durchs Bild
-  schwingt; weiter hinten liegende Balken werden zuerst und dünner gezeichnet. Spielt der Kanal
-  eine Note, leuchtet sein Balken weiß auf.
-- **Sinus-Scroller:** eine große Laufschrift in der eingebauten Pixelschrift, jede Punktspalte
-  auf einer wandernden Sinuswelle. Sie zeigt den Songtitel und die Sample-Namen, in denen
-  Musiker traditionell Grüße und Botschaften versteckt haben.
-- **Logo und Sternenfeld:** „RUSTRACKER“ in wechselnden Copper-Farben, das auf jedem Schlag
-  hüpft, und ein Sternenfeld, dessen Tempo dem Pegel folgt.
+- **Amiga – Copper-Bars:** ein schimmernder Farbbalken pro Kanal, der auf einer Sinusbahn durch
+  ein Sternenfeld schwingt; spielt der Kanal eine Note, leuchtet sein Balken weiß auf.
+- **PC – Plasma:** vier überlagerte Sinuswellen, deren Summe eine rotierende Farbpalette
+  ansteuert.
+- **PC – Rotozoomer:** eine XOR-Textur, die sich dreht, zoomt und auf dem Schlag pulsiert.
+- **C64 – Rasterzeilen:** Farbbalken in der C64-Palette laufen durch den Rahmen um den blauen
+  Bildschirm mit „READY.“ und blinkendem Cursor.
 
-Sie steckt in `src/vis_amiga.rs` und wird in beiden Editionen von Rust gezeichnet.
+Über allem hüpft das Logo „RUSTRACKER“ auf jedem Schlag, und ein Sinus-Scroller zeigt den
+Songtitel, die Sample-Namen (in denen Musiker traditionell Grüße versteckt haben) und Grüße an
+die Szene. Plasma und Rotozoomer rechnen in den inneren Schleifen nur mit ganzen Zahlen und
+Tabellen und laufen deshalb auch in der DOS-Edition flott. Die Ansicht steckt in
+`src/vis_demo.rs` und wird in allen Editionen von Rust gezeichnet.
 
 ## Continuous Integration
 
@@ -276,7 +280,7 @@ Gleitkomma auf der x87-FPU). Dazu kommen ein paar hundert Zeilen DOS-Schicht:
 |---|---|
 | `dos/stub.asm` | `RTRACK.COM`, 16-Bit-Lader: lädt `RTRACK.BIN` und den Song über XMS (oder INT 15h) in den Erweiterungsspeicher, reserviert den DMA-Puffer, schaltet VGA-Modus 13h ein und springt in den 32-Bit-Protected-Mode; danach stellt es Real Mode, Interrupt-Controller und Textmodus wieder her und zeigt die Meldungen des Programms |
 | `dos/entry.asm` | 32-Bit-Einstieg: Interrupt-Tabelle, Interrupt-Controller auf 20h–2Fh, FPU-Zustand im Interrupt sichern, Ports für Rust |
-| `dos/dos.rs` | Sound Blaster 16 (44,1 kHz Stereo, 16 Bit) oder 2.0/Pro (22 kHz Mono, 8 Bit) mit Auto-Init-DMA, gemischt im Interrupt; Tastatur; Umrechnung der RGBA-Bilder auf eine feste 256-Farben-Palette mit geordnetem Dithering; Anzeige im vertikalen Strahlrücklauf |
+| `dos/dos.rs` | Sound Blaster 16 (44,1 kHz Stereo, 16 Bit) oder 2.0/Pro (22 kHz Mono, 8 Bit) mit Auto-Init-DMA, gemischt im Interrupt; Tastatur; Umrechnung der RGBA-Bilder auf eine Palette, die dem Bild folgt (die 256 häufigsten Farben aus den 262 144 der VGA, die übrigen auf die nächstliegende abgebildet, ohne Dithering); Anzeige im vertikalen Strahlrücklauf |
 | `dos/rt.asm` | `memcpy` und Co., die der Compiler aufruft |
 | `dos/rtrack.rs` | Crate-Wurzel: bindet `src/` mit `--cfg dos` ein (kleine Puffer, Linien in Festkomma statt vieler langsamer Gleitkomma-Umwandlungen) |
 | `dos/selftest.asm` | Linux-Testrahmen (i386): spielt ohne Hardware und schreibt das letzte Bild |
@@ -293,7 +297,7 @@ dos/package.sh /tmp/dos-site                            # ZIP und Seite
 Auf dem PC: `RTRACK [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet). Nötig sind
 16 MB RAM (das Programm belegt etwa 10 MB), die Variable `BLASTER` und DOS im Real Mode:
 HIMEM.SYS ist in Ordnung, EMM386, QEMM oder eine Windows-DOS-Box nicht. Pattern-Tabelle,
-Oszilloskop, Spektrum und Amiga-Ansicht sind auf einen Pentium 133 ausgelegt; Mandelbrot,
+Oszilloskop, Spektrum und Demoszene-Ansicht sind auf einen Pentium 133 ausgelegt; Mandelbrot,
 Würfel, Voxel und See rechnen dort nur wenige Bilder pro Sekunde. Die Musik läuft im Interrupt
 und stockt deshalb auch dann nicht. Details stehen in `dos/README.TXT`.
 
@@ -316,7 +320,7 @@ Voraussetzungen: cargo, ffmpeg, Python 3 mit Pillow und die DejaVu-Schriften.
 ## Framebuffer-Edition (`www-fb/`)
 
 Eine zweite Oberfläche, bei der **jedes Pixel in Rust gezeichnet wird**: Knöpfe, Schrift,
-Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel, Voxel-Landschaft, See, Amiga-Demo und Pattern-Ansicht. Rust rendert in einen
+Oszilloskop, Spektrum 2D/3D, Mandelbrot-Zoom, Würfel, Voxel-Landschaft, See, Demoszene und Pattern-Ansicht. Rust rendert in einen
 RGBA-Framebuffer im WASM-Speicher, JavaScript legt ihn per `putImageData` auf ein Canvas.
 Das JavaScript (`www-fb/index.html` und die mit der klassischen Edition geteilte Anbindung
 `www/rustvis.js`, die `build.sh` und die CI nach `www-fb/` kopieren) macht nur noch Folgendes:
@@ -334,7 +338,7 @@ Das JavaScript (`www-fb/index.html` und die mit der klassischen Edition geteilte
 | `src/vis_spec.rs` | Spektrum 2D mit Spektrogramm und 3D-Verlauf mit Floating Horizon |
 | `src/vis_cube.rs` | Würfel mit sechs Live-Flächen, perspektivisch korrekte Texturen |
 | `src/vis_voxel.rs` | Voxel-Landschaft aus dem Mandelbrot-Zoom mit Kameraflug |
-| `src/vis_amiga.rs` | Amiga-Demo: Copper-Bars, Sinus-Scroller, Logo, Sternenfeld |
+| `src/vis_demo.rs` | Demoszene: Copper-Bars, Plasma, Rotozoomer, C64-Rasterzeilen, Logo, Sinus-Scroller |
 | `src/vis_lake.rs` | See aus Voxeln: Wellengleichung, angeregt von Bass und Takt |
 | `src/voxel_space.rs` | wiederverwendbarer Voxel-Space-Renderer für Höhenkarten (Kamera-Orbit, Strahlen pro Spalte, Dunst) |
 | `src/vis_ui.rs` | Knopfleiste, Eingabe, Seitenleiste mit Order-Liste und Pattern |

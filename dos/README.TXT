@@ -2,7 +2,7 @@ RUSTRACKER fuer DOS
 ===================
 
 Ein MOD-Player mit Pattern-Anzeige, Oszilloskop, Spektrum, Mandelbrot-, Wuerfel-,
-Voxel-, See- und Amiga-Ansicht, geschrieben in Rust (ohne Standardbibliothek).
+Voxel-, See- und Demoszene-Ansicht, geschrieben in Rust (ohne Standardbibliothek).
 
 Aufruf:   RTRACK [datei.mod]      (ohne Namen: NEON.MOD)
 
@@ -18,7 +18,7 @@ Tasten:   Esc        Ende
 
 Voraussetzungen
   * 386 oder neuer, sinnvoll ab Pentium. Pattern-Tabelle, Oszilloskop, Spektrum
-    und Amiga-Ansicht sind fuer einen Pentium 133 gedacht; die Mandelbrot-, Wuerfel-,
+    und Demoszene-Ansicht sind fuer einen Pentium 133 gedacht; die Mandelbrot-, Wuerfel-,
     Voxel- und See-Ansicht rechnen dort nur wenige Bilder pro Sekunde.
   * 16 MB RAM (das Programm braucht etwa 10 MB Erweiterungsspeicher)
   * VGA

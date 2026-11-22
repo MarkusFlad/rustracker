@@ -43,7 +43,7 @@ fn main() {
         (46.0, 4, false, "voxel2"),
         (52.0, 5, false, "lake"),
         (58.0, 5, false, "lake2"),
-        (64.0, 6, false, "amiga"),
+        (64.0, 6, false, "demo"),
     ];
     let mut view = 0u32;
     let mut spec3d = false;

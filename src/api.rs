@@ -344,7 +344,7 @@ pub extern "C" fn vis_frame(now: f64, w: i32, h: i32, css: f64) -> *const u32 {
 ///
 /// # Arguments
 /// * `view` - 0 oscilloscope, 1 Mandelbrot, 2 spectrum, 3 cube, 4 voxel landscape, 5 lake,
-///   6 Amiga demo
+///   6 demo scene
 /// * `now` - time in ms (performance.now())
 /// * `w` - wanted width in pixels
 /// * `h` - wanted height; clamped to the buffer, see [`vis_width`]/[`vis_height`]

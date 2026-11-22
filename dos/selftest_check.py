@@ -10,7 +10,7 @@ from PIL import Image
 song, outdir = sys.argv[1], pathlib.Path(sys.argv[2])
 secs = sys.argv[3] if len(sys.argv) > 3 else "4"
 outdir.mkdir(parents=True, exist_ok=True)
-names = ["osci", "mandel", "spektrum", "wuerfel", "voxel", "see", "amiga"]
+names = ["osci", "mandel", "spektrum", "wuerfel", "voxel", "see", "demo"]
 failed = False
 for view, name in enumerate(names):
     raw = outdir / f"{name}.raw"

@@ -96,6 +96,6 @@ lower_third('c4.png', 4, 'Sechs Ansichten auf einem Würfel', 'alle live, perspe
 lower_third('c5.png', 5, 'Das Fraktal als Voxel-Landschaft', 'Kameraflug um die Gipfel')
 lower_third('c6.png', 6, 'Ein See, den der Bass bewegt', 'echte Wellengleichung, Wellen überlagern sich')
 lower_third('c7.png', 8, 'Jedes Pixel in Rust gezeichnet', 'ohne Frameworks, ohne fremde Crates')
-lower_third('c8.png', 7, 'Eine Verbeugung vor dem Amiga', 'Copper-Bars, Sinus-Scroller, Sternenfeld', top=330)  # keeps the scroller free
+lower_third('c8.png', 7, 'Eine Verbeugung vor der Demoszene', 'C64, Amiga und PC: Rasterzeilen, Copper-Bars, Plasma', top=330)  # keeps the scroller free
 end_card('end.png')
 print('ok')

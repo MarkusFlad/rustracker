@@ -568,11 +568,11 @@ function showHud(v, info) {
     `<br>${info || '…'}` + (v.m ? `<br>Pos ${v.m.order} · Zeile ${String(Math.floor(v.rowF)).padStart(2, '0')} · Pegel ${(dir.inten * 100).toFixed(0)} %` : '');
 }
 
-// ---- voxel views (landscape and lake) and the Amiga demo: drawn by the Rust renderer (src/vis.rs) in its own
+// ---- voxel views (landscape and lake) and the demo-scene view: drawn by the Rust renderer (src/vis.rs) in its own
 // instance of modplayer.wasm, the same code as in the framebuffer edition (glue: rustvis.js)
 const rcanvas = $('rustview'), rctx = rcanvas.getContext('2d');
 /** Rust view numbers (see view_frame in src/vis.rs). */
-const RUST_VIEW = { voxel: 4, lake: 5, amiga: 6 };
+const RUST_VIEW = { voxel: 4, lake: 5, demo: 6 };
 let rust = null;
 /** Voxel views: smooth surface instead of blocky voxels (the default). */
 let voxelFine = true;
@@ -605,18 +605,18 @@ function drawRust() {
   if (last && playing) showPosition(last);
 }
 
-const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel', 'lake', 'amiga'];
-const VIEW_NAME = { oscilloscope: 'Oszilloskop', mandel: 'Mandelbrot', spectrum: 'Spektrum', cube: 'Würfel', voxel: 'Voxel', lake: 'See', amiga: 'Amiga' };
+const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel', 'lake', 'demo'];
+const VIEW_NAME = { oscilloscope: 'Oszilloskop', mandel: 'Mandelbrot', spectrum: 'Spektrum', cube: 'Würfel', voxel: 'Voxel', lake: 'See', demo: 'Demoszene' };
 const VIEW_TITLE = { oscilloscope: 'Oszilloskop · Master L/R · XY · Kanäle', mandel: 'Mandelbrot-Zoom im Takt der Musik',
   spectrum: 'Spektrum · FFT (Rust, 4096 Punkte, Hann-Fenster) · Spektrogramm',
   cube: 'Würfel · Oszilloskop · XY · Spektrum 2D/3D · Noten · Mandelbrot',
   voxel: 'Voxel-Landschaft aus dem Mandelbrot-Zoom · Kameraflug um die Gipfel',
   lake: 'See aus Voxeln · Bass und Takt erzeugen Wellen',
-  amiga: 'Amiga-Demo · Copper-Bars · Sinus-Scroller · Sternenfeld' };
+  demo: 'Demoszene · Copper-Bars · Plasma · Rotozoomer · Rasterzeilen' };
 /** Switches the view: shows its canvas and controls, starts the Mandelbrot engine on first use. */
 async function setView(mode) {
   viewMode = mode;
-  const md = mode === 'mandel', sm = mode === 'spectrum', vx = mode === 'voxel', lk = mode === 'lake', am = mode === 'amiga';
+  const md = mode === 'mandel', sm = mode === 'spectrum', vx = mode === 'voxel', lk = mode === 'lake', am = mode === 'demo';
   $('view').textContent = 'Ansicht: ' + VIEW_NAME[mode];
   $('viewTitle').textContent = VIEW_TITLE[mode];
   canvas.style.display = mode === 'oscilloscope' ? 'block' : 'none';

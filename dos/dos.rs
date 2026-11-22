@@ -5,9 +5,10 @@
 //!   auto-initialising DMA buffer that has just been played (SB16: 16-bit stereo 44.1 kHz,
 //!   SB 2.0/Pro: 8-bit mono 22 kHz). Each block of 1024 frames also becomes a renderer slot
 //!   (scopes, spectrum), exactly like the worklet's messages in the browser.
-//! * Picture: the framebuffer renderer draws 320 x 200 RGBA frames; they are mapped onto a
-//!   fixed 256-colour palette (6 x 6 x 6 colour cube plus 40 greys, ordered dithering) and
-//!   copied into VGA memory during the vertical retrace (mode 13h).
+//! * Picture: the framebuffer renderer draws 320 x 200 RGBA frames; an adaptive 256-colour
+//!   palette follows their colours (the 256 most frequent RGB555 colours, the others mapped
+//!   to the nearest), and they are copied into VGA memory during the vertical retrace
+//!   (mode 13h).
 //! * Keyboard: polled from the keyboard controller (its interrupt stays masked).
 //!
 //! Memory is addressed through segments with the image's load address as base: physical
@@ -98,10 +99,27 @@ static mut QUIT_MS: f64 = 0.0; // > 0: quit at this playback time
 static mut SPEC_TURN: u32 = 0;
 static mut SPEC_PTR: usize = 0;
 
-// picture
-static mut LUT: [u8; 32768] = [0; 32768];
+// picture: an adaptive 256-colour palette over the colours of RGB555 (see `update_palette`)
 static mut BACK: [u8; 64000] = [0; 64000];
-const BAYER: [i32; 16] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/// Colour (RGB555) in each palette slot, or `FREE`.
+static mut PAL15: [u32; 256] = [FREE; 256];
+/// Slots whose DAC entry still has to be written.
+static mut DIRTY: [u8; 256] = [0; 256];
+/// Slot + 1 of each RGB555 colour that has a slot of its own, else 0.
+static mut SLOT_OF: [u32; 32768] = [0; 32768];
+/// Cached slot for each RGB555 colour, valid while `LUT_GEN` equals `GEN`.
+static mut LUT: [u8; 32768] = [0; 32768];
+static mut LUT_GEN: [u32; 32768] = [0; 32768];
+static mut GEN: u32 = 1;
+/// Pixels per RGB555 colour in the frame being analysed, and the colours that occur.
+static mut COUNT: [u32; 32768] = [0; 32768];
+static mut USED: [u32; 32768] = [0; 32768];
+/// Colours chosen for the palette (marked with `MARK_ID` in `MARK`).
+static mut MARK: [u32; 32768] = [0; 32768];
+static mut MARK_ID: u32 = 0;
+const FREE: u32 = 0xFFFF_FFFF;
+/// Frames between two palette analyses.
+const PALETTE_EVERY: u32 = 4;
 
 /// Pointer for a physical address.
 fn phys(p: u32) -> usize {
@@ -235,8 +253,6 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         log(b"\r\n");
         vis_event(2);
         vis_set_playing(1);
-        set_palette();
-        build_tables();
         log(b"Start der Wiedergabe\r\n");
         sb_start();
         main_loop();
@@ -273,6 +289,7 @@ pub extern "C" fn rust_irq(irq: u32) {
 unsafe fn main_loop() {
     let mut e0 = false;
     let mut first = true;
+    let mut frame = 0u32;
     loop {
         let k = read_key();
         if k >= 0 {
@@ -299,8 +316,13 @@ unsafe fn main_loop() {
             vis_set_fine(0); // coarse voxels (the renderer sets its defaults on the first frame)
             first = false;
         }
+        if frame % PALETTE_EVERY == 0 {
+            update_palette(fb);
+        }
+        frame += 1;
         convert_frame(fb);
         wait_retrace();
+        write_dac();
         show_frame();
     }
 }
@@ -739,118 +761,194 @@ unsafe fn mask_irq(irq: u32) {
 }
 
 // ------------------------------------------------------------------ picture
+//
+// VGA mode 13h shows 256 colours at a time, each chosen from 262 144 (6 bits per channel).
+// Instead of a fixed palette with dithering, the palette follows the picture: every few
+// frames the colours of the frame are counted (in RGB555, 32 768 possible colours) and the
+// 256 most frequent ones get a slot. Colours that keep their place keep their slot, so only
+// new colours change DAC entries (written during the vertical retrace). Pixels whose colour
+// has no slot get the nearest slot colour; that search is cached per colour.
 
-/// Palette: 6 x 6 x 6 colour cube (0..215) and 40 greys (216..255).
-unsafe fn set_palette() {
-    outb(0x3C8, 0);
-    let mut i = 0;
-    while i < 256 {
-        let (r, g, b) = palette_rgb(i);
-        outb(0x3C9, r >> 2);
-        outb(0x3C9, g >> 2);
-        outb(0x3C9, b >> 2);
-        i += 1;
-    }
-}
-
-/// RGB (0..255) of palette entry `i`.
-fn palette_rgb(i: u32) -> (u32, u32, u32) {
-    if i < 216 {
-        ((i / 36) * 51, ((i / 6) % 6) * 51, (i % 6) * 51)
-    } else {
-        let v = (i - 216) * 255 / 39;
-        (v, v, v)
-    }
-}
-
-/// RGB555 -> nearest palette entry (cube or grey).
-unsafe fn build_lut() {
-    let mut c = 0;
-    while c < 32768 {
-        let r = ((c >> 10) & 31) * 255 / 31;
-        let g = ((c >> 5) & 31) * 255 / 31;
-        let b = (c & 31) * 255 / 31;
-        let cube = ((r + 25) / 51) * 36 + ((g + 25) / 51) * 6 + (b + 25) / 51;
-        let grey = 216 + ((r + g + b) / 3 * 39 + 127) / 255;
-        LUT[c as usize] = if dist(r, g, b, cube) <= dist(r, g, b, grey) {
-            cube as u8
-        } else {
-            grey as u8
-        };
-        c += 1;
-    }
-}
-
-fn dist(r: u32, g: u32, b: u32, i: u32) -> u32 {
-    let (pr, pg, pb) = palette_rgb(i);
-    let dr = r as i32 - pr as i32;
-    let dg = g as i32 - pg as i32;
-    let db = b as i32 - pb as i32;
-    (dr * dr + dg * dg + db * db) as u32
-}
-
-/// RGBA framebuffer of the renderer -> palette indices with 4 x 4 ordered dithering.
-unsafe fn convert_frame(fb: usize) {
-    let mut p = fb;
-    let mut q = (&raw mut BACK) as usize;
-    let mut y = 0;
-    while y < SH as usize {
-        let row = (y & 3) * 4;
-        let d0 = DITHER[row] as usize;
-        let d1 = DITHER[row + 1] as usize;
-        let d2 = DITHER[row + 2] as usize;
-        let d3 = DITHER[row + 3] as usize;
-        let end = q + SW as usize;
-        while q < end {
-            convert_pixel(p, q, d0);
-            convert_pixel(p + 4, q + 1, d1);
-            convert_pixel(p + 8, q + 2, d2);
-            convert_pixel(p + 12, q + 3, d3);
-            p += 16;
-            q += 4;
-        }
-        y += 1;
-    }
-}
-
-/// One RGBA pixel at `p` -> palette index at `q`, with dither offset `d`.
+/// RGB555 key of an RGBA pixel.
 #[inline(always)]
-unsafe fn convert_pixel(p: usize, q: usize, d: usize) {
-    // raw table reads: the indices are in range by construction, and bounds checks would
-    // double the work of this innermost loop
-    let c = *(p as *const u32) as usize;
-    let cl = (&raw const CLAMP5) as usize + d;
-    let r = *((cl + (c & 255)) as *const u8) as usize;
-    let g = *((cl + ((c >> 8) & 255)) as *const u8) as usize;
-    let b = *((cl + ((c >> 16) & 255)) as *const u8) as usize;
-    *(q as *mut u8) = *(((&raw const LUT) as usize + ((r << 10) | (g << 5) | b)) as *const u8);
+fn key15(c: u32) -> usize {
+    (((c & 0xF8) << 7) | ((c >> 6) & 0x3E0) | ((c >> 19) & 0x1F)) as usize
 }
 
-/// Dither offsets (+ 25, so they index [`CLAMP5`] without going negative).
-static mut DITHER: [u8; 16] = [0; 16];
-/// `CLAMP5[v + 25]` = `clamp(v, 0, 255) >> 3` for v in -25 ..= 280.
-static mut CLAMP5: [u8; 306] = [0; 306];
-
-/// Fills [`DITHER`], [`CLAMP5`] and the RGB555 table [`LUT`].
-unsafe fn build_tables() {
+/// Counts the colours of frame `fb` and gives the most frequent 256 a palette slot.
+unsafe fn update_palette(fb: usize) {
+    // histogram, and the list of colours that occur
+    let mut n = 0usize;
     let mut i = 0;
-    while i < 16 {
-        DITHER[i] = (BAYER[i] * 51 / 16) as u8;
+    while i < 64000 {
+        let k = key15(*((fb + i * 4) as *const u32));
+        let cnt = COUNT[k];
+        if cnt == 0 {
+            USED[n] = k as u32;
+            n += 1;
+        }
+        COUNT[k] = cnt + 1;
         i += 1;
+    }
+    // the 256 most frequent colours: whole classes of log2(count) from the top
+    let mut classes = [0u32; 17];
+    i = 0;
+    while i < n {
+        classes[log2_class(COUNT[USED[i] as usize])] += 1;
+        i += 1;
+    }
+    let mut cut = 16usize; // colours of class > cut all fit
+    let mut taken = 0u32;
+    while cut > 0 && taken + classes[cut] <= 256 {
+        taken += classes[cut];
+        cut -= 1;
+    }
+    let mut room = 256 - taken; // places left for colours of class == cut
+    MARK_ID = if MARK_ID == 0xFFFF_FFFF {
+        1
+    } else {
+        MARK_ID + 1
+    };
+    if MARK_ID == 1 {
+        let mut j = 0;
+        while j < 32768 {
+            MARK[j] = 0;
+            j += 1;
+        }
     }
     i = 0;
-    while i < 306 {
-        let v = i as i32 - 25;
-        CLAMP5[i] = ((if v < 0 {
-            0
-        } else if v > 255 {
-            255
-        } else {
-            v
-        }) >> 3) as u8;
+    while i < n {
+        let k = USED[i] as usize;
+        let cl = log2_class(COUNT[k]);
+        if cl > cut || (cl == cut && room > 0) {
+            if cl == cut {
+                room -= 1;
+            }
+            MARK[k] = MARK_ID;
+        }
         i += 1;
     }
-    build_lut();
+    // free the slots of colours that dropped out, then give new colours a free slot
+    let mut s = 0;
+    while s < 256 {
+        let c = PAL15[s];
+        if c != FREE && MARK[c as usize] != MARK_ID {
+            SLOT_OF[c as usize] = 0;
+            PAL15[s] = FREE;
+        }
+        s += 1;
+    }
+    let mut changed = false;
+    let mut free = 0;
+    i = 0;
+    while i < n {
+        let k = USED[i] as usize;
+        if MARK[k] == MARK_ID && SLOT_OF[k] == 0 {
+            while free < 256 && PAL15[free] != FREE {
+                free += 1;
+            }
+            if free < 256 {
+                PAL15[free] = k as u32;
+                SLOT_OF[k] = free as u32 + 1;
+                DIRTY[free] = 1;
+                changed = true;
+            }
+        }
+        COUNT[k] = 0;
+        i += 1;
+    }
+    if changed {
+        GEN = if GEN == 0xFFFF_FFFF { 1 } else { GEN + 1 };
+        if GEN == 1 {
+            let mut j = 0;
+            while j < 32768 {
+                LUT_GEN[j] = 0;
+                j += 1;
+            }
+        }
+    }
+}
+
+/// 0 for a count of 1, 1 for 2..3, 2 for 4..7, ... (at most 15 for 64 000 pixels).
+fn log2_class(c: u32) -> usize {
+    let mut v = c;
+    let mut k = 0;
+    while v > 1 {
+        v = v >> 1;
+        k += 1;
+    }
+    k
+}
+
+/// Palette slot for RGB555 colour `k`: its own slot, else the nearest slot colour (cached).
+#[inline(always)]
+unsafe fn slot_for(k: usize) -> u8 {
+    if LUT_GEN[k] == GEN {
+        return LUT[k];
+    }
+    let own = SLOT_OF[k];
+    let slot = if own != 0 {
+        (own - 1) as u8
+    } else {
+        nearest_slot(k)
+    };
+    LUT[k] = slot;
+    LUT_GEN[k] = GEN;
+    slot
+}
+
+/// The slot whose colour is closest to RGB555 colour `k` (0 if the palette is empty).
+unsafe fn nearest_slot(k: usize) -> u8 {
+    let (r, g, b) = ((k >> 10) as i32, ((k >> 5) & 31) as i32, (k & 31) as i32);
+    let mut best = 0;
+    let mut best_d = 0x7FFF_FFFF;
+    let mut s = 0;
+    while s < 256 {
+        let c = PAL15[s];
+        if c != FREE {
+            let dr = (c >> 10) as i32 - r;
+            let dg = ((c >> 5) & 31) as i32 - g;
+            let db = (c & 31) as i32 - b;
+            // weighted like the eye: green counts most, blue least
+            let d = 3 * dr * dr + 4 * dg * dg + 2 * db * db;
+            if d < best_d {
+                best_d = d;
+                best = s;
+            }
+        }
+        s += 1;
+    }
+    best as u8
+}
+
+/// RGBA framebuffer of the renderer -> palette indices.
+unsafe fn convert_frame(fb: usize) {
+    let mut i = 0;
+    while i < 64000 {
+        BACK[i] = slot_for(key15(*((fb + i * 4) as *const u32)));
+        i += 1;
+    }
+}
+
+/// 6-bit DAC value of a 5-bit channel.
+fn dac6(v: u32) -> u32 {
+    (v << 1) | (v >> 4)
+}
+
+/// Writes the changed palette slots to the VGA DAC.
+unsafe fn write_dac() {
+    let mut s = 0;
+    while s < 256 {
+        if DIRTY[s] != 0 {
+            let c = PAL15[s];
+            outb(0x3C8, s as u32);
+            outb(0x3C9, dac6(c >> 10));
+            outb(0x3C9, dac6((c >> 5) & 31));
+            outb(0x3C9, dac6(c & 31));
+            DIRTY[s] = 0;
+        }
+        s += 1;
+    }
 }
 
 unsafe fn wait_retrace() {
@@ -894,7 +992,6 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         }
         vis_event(2);
         vis_set_playing(1);
-        build_tables();
         let mut views = 0;
         while views < view && view < 7 {
             vis_key(118);
@@ -919,6 +1016,9 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
             if f == 0 {
                 vis_set_fine(0);
             }
+            if f % PALETTE_EVERY == 0 {
+                update_palette(fb);
+            }
             convert_frame(fb);
             f += 1;
         }
@@ -929,10 +1029,11 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         }
         i = 0;
         while i < 256 {
-            let (r, g, b) = palette_rgb(i as u32);
-            *((out as usize + 64000 + i * 3) as *mut u8) = r as u8;
-            *((out as usize + 64000 + i * 3 + 1) as *mut u8) = g as u8;
-            *((out as usize + 64000 + i * 3 + 2) as *mut u8) = b as u8;
+            let c = if PAL15[i] == FREE { 0 } else { PAL15[i] };
+            let o = out as usize + 64000 + i * 3;
+            *(o as *mut u8) = (dac6(c >> 10) << 2) as u8;
+            *((o + 1) as *mut u8) = (dac6((c >> 5) & 31) << 2) as u8;
+            *((o + 2) as *mut u8) = (dac6(c & 31) << 2) as u8;
             i += 1;
         }
         MIXED

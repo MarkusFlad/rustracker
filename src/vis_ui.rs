@@ -257,8 +257,8 @@ impl Vis {
                 self.add_button(s, x, y, h, b"VOXEL", B_VIEW, false)
             } else if v == V_LAKE {
                 self.add_button(s, x, y, h, b"SEE", B_VIEW, false)
-            } else if v == V_AMIGA {
-                self.add_button(s, x, y, h, b"AMIGA", B_VIEW, false)
+            } else if v == V_DEMO {
+                self.add_button(s, x, y, h, b"DEMO", B_VIEW, false)
             } else {
                 self.add_button(s, x, y, h, b"W\xc8RFEL", B_VIEW, false)
             }
@@ -272,8 +272,8 @@ impl Vis {
             self.add_button(s, x, y, h, b"ANSICHT: VOXEL", B_VIEW, false)
         } else if v == V_LAKE {
             self.add_button(s, x, y, h, b"ANSICHT: SEE", B_VIEW, false)
-        } else if v == V_AMIGA {
-            self.add_button(s, x, y, h, b"ANSICHT: AMIGA", B_VIEW, false)
+        } else if v == V_DEMO {
+            self.add_button(s, x, y, h, b"ANSICHT: DEMOSZENE", B_VIEW, false)
         } else {
             self.add_button(s, x, y, h, b"ANSICHT: W\xc8RFEL", B_VIEW, false)
         }

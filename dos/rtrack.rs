@@ -26,8 +26,8 @@ pub mod replayer;
 pub mod spectrum;
 #[path = "../src/vis.rs"]
 pub mod vis;
-#[path = "../src/vis_amiga.rs"]
-mod vis_amiga;
+#[path = "../src/vis_demo.rs"]
+mod vis_demo;
 #[path = "../src/vis_cube.rs"]
 mod vis_cube;
 #[path = "../src/vis_lake.rs"]
