@@ -367,6 +367,15 @@ pub extern "C" fn vis_set_fine(on: i32) {
     vis().set_fine(on != 0)
 }
 
+/// The view the renderer currently shows (numbers as in [`vis_view`]).
+///
+/// # Returns
+/// 0 oscilloscope, 1 Mandelbrot, 2 spectrum, 3 cube, 4 voxel landscape, 5 lake, 6 demo scene
+#[no_mangle]
+pub extern "C" fn vis_current_view() -> u32 {
+    vis().view
+}
+
 /// Views the view button (and the V key) steps through; the oscilloscope always stays in.
 ///
 /// # Arguments

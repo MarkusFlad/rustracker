@@ -6,7 +6,7 @@
 //!   SB 2.0/Pro: 8-bit mono 22 kHz). Each block of 1024 frames also becomes a renderer slot
 //!   (scopes, spectrum), exactly like the worklet's messages in the browser.
 //! * Picture: the framebuffer renderer draws 320 x 200 RGBA frames; an adaptive 256-colour
-//!   palette follows their colours (the 256 most frequent RGB555 colours, the others mapped
+//!   palette follows their colours (the 255 most frequent RGB555 colours, the others mapped
 //!   to the nearest), and they are copied into VGA memory during the vertical retrace
 //!   (mode 13h).
 //! * Keyboard: polled from the keyboard controller (its interrupt stays masked).
@@ -113,10 +113,12 @@ static mut PAL15: [u32; 256] = [FREE; 256];
 static mut DIRTY: [u8; 256] = [0; 256];
 /// Slot + 1 of each RGB555 colour that has a slot of its own, else 0.
 static mut SLOT_OF: [u32; 32768] = [0; 32768];
-/// Cached slot for each RGB555 colour, valid while `LUT_GEN` equals `GEN`.
+/// Cached slot for each RGB555 colour, `UNKNOWN` until looked up (cleared when the palette
+/// changes). One byte per colour keeps the table small enough for the Pentium's cache.
 static mut LUT: [u8; 32768] = [0; 32768];
-static mut LUT_GEN: [u32; 32768] = [0; 32768];
-static mut GEN: u32 = 1;
+/// Marks an empty `LUT` entry; therefore slot 255 is never used.
+const UNKNOWN: u8 = 255;
+const SLOTS: usize = 255;
 /// Pixels per RGB555 colour in the frame being analysed, and the colours that occur.
 static mut COUNT: [u32; 32768] = [0; 32768];
 static mut USED: [u32; 32768] = [0; 32768];
@@ -125,7 +127,7 @@ static mut MARK: [u32; 32768] = [0; 32768];
 static mut MARK_ID: u32 = 0;
 const FREE: u32 = 0xFFFF_FFFF;
 /// Frames between two palette analyses.
-const PALETTE_EVERY: u32 = 4;
+const PALETTE_EVERY: u32 = 8;
 
 /// Pointer for a physical address.
 fn phys(p: u32) -> usize {
@@ -265,6 +267,7 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         log(b"\r\n");
         vis_event(2);
         vis_set_playing(1);
+        clear_lut();
         log(b"Start der Wiedergabe\r\n");
         sb_start();
         let ok = main_loop();
@@ -451,17 +454,27 @@ unsafe fn commit_pending() {
     }
     poke32(&raw mut PEND_READY, 0);
     irq_enable();
-    // the 4096-point FFT costs a lot on a Pentium: a new spectrum every other slot
-    SPEC_TURN = SPEC_TURN ^ 1;
-    if SPEC_TURN != 0 || SPEC_PTR == 0 {
-        SPEC_PTR = mp_spectrum(4096) as usize;
-    }
-    let sp = SPEC_PTR;
+    // the 4096-point FFT costs a lot on a Pentium: only for the views that show the spectrum
+    // (spectrum, cube, lake), and there a new one every other slot; the others get silence
     let off = vis_spec_offset() as usize;
-    i = 0;
-    while i < 2049 {
-        *((slot + (off + i) * 4) as *mut f32) = *((sp + i * 4) as *const f32);
-        i += 1;
+    let view = vis_current_view();
+    if view == 2 || view == 3 || view == 5 {
+        SPEC_TURN = SPEC_TURN ^ 1;
+        if SPEC_TURN != 0 || SPEC_PTR == 0 {
+            SPEC_PTR = mp_spectrum(4096) as usize;
+        }
+        let sp = SPEC_PTR;
+        i = 0;
+        while i < 2049 {
+            *((slot + (off + i) * 4) as *mut f32) = *((sp + i * 4) as *const f32);
+            i += 1;
+        }
+    } else {
+        i = 0;
+        while i < 2049 {
+            *((slot + (off + i) * 4) as *mut f32) = 0.0;
+            i += 1;
+        }
     }
     vis_commit(
         meta[6] as f64,
@@ -924,7 +937,7 @@ unsafe fn mask_irq(irq: u32) {
 // VGA mode 13h shows 256 colours at a time, each chosen from 262 144 (6 bits per channel).
 // Instead of a fixed palette with dithering, the palette follows the picture: every few
 // frames the colours of the frame are counted (in RGB555, 32 768 possible colours) and the
-// 256 most frequent ones get a slot. Colours that keep their place keep their slot, so only
+// 255 most frequent ones get a slot (slot 255 marks empty cache entries). Colours that keep their place keep their slot, so only
 // new colours change DAC entries (written during the vertical retrace). Pixels whose colour
 // has no slot get the nearest slot colour; that search is cached per colour.
 
@@ -949,7 +962,7 @@ unsafe fn update_palette(fb: usize) {
         COUNT[k] = cnt + 1;
         i += 1;
     }
-    // the 256 most frequent colours: whole classes of log2(count) from the top
+    // the 255 most frequent colours: whole classes of log2(count) from the top
     let mut classes = [0u32; 17];
     i = 0;
     while i < n {
@@ -958,11 +971,11 @@ unsafe fn update_palette(fb: usize) {
     }
     let mut cut = 16usize; // colours of class > cut all fit
     let mut taken = 0u32;
-    while cut > 0 && taken + classes[cut] <= 256 {
+    while cut > 0 && taken + classes[cut] <= SLOTS as u32 {
         taken += classes[cut];
         cut -= 1;
     }
-    let mut room = 256 - taken; // places left for colours of class == cut
+    let mut room = SLOTS as u32 - taken; // places left for colours of class == cut
     MARK_ID = if MARK_ID == 0xFFFF_FFFF {
         1
     } else {
@@ -1003,10 +1016,10 @@ unsafe fn update_palette(fb: usize) {
     while i < n {
         let k = USED[i] as usize;
         if MARK[k] == MARK_ID && SLOT_OF[k] == 0 {
-            while free < 256 && PAL15[free] != FREE {
+            while free < SLOTS && PAL15[free] != FREE {
                 free += 1;
             }
-            if free < 256 {
+            if free < SLOTS {
                 PAL15[free] = k as u32;
                 SLOT_OF[k] = free as u32 + 1;
                 DIRTY[free] = 1;
@@ -1017,14 +1030,17 @@ unsafe fn update_palette(fb: usize) {
         i += 1;
     }
     if changed {
-        GEN = if GEN == 0xFFFF_FFFF { 1 } else { GEN + 1 };
-        if GEN == 1 {
-            let mut j = 0;
-            while j < 32768 {
-                LUT_GEN[j] = 0;
-                j += 1;
-            }
-        }
+        clear_lut();
+    }
+}
+
+/// Empties the colour cache (all entries `UNKNOWN`).
+unsafe fn clear_lut() {
+    let p = (&raw mut LUT) as usize;
+    let mut j = 0;
+    while j < 32768 / 4 {
+        *((p + j * 4) as *mut u32) = 0xFFFF_FFFF;
+        j += 1;
     }
 }
 
@@ -1042,8 +1058,9 @@ fn log2_class(c: u32) -> usize {
 /// Palette slot for RGB555 colour `k`: its own slot, else the nearest slot colour (cached).
 #[inline(always)]
 unsafe fn slot_for(k: usize) -> u8 {
-    if LUT_GEN[k] == GEN {
-        return LUT[k];
+    let cached = LUT[k];
+    if cached != UNKNOWN {
+        return cached;
     }
     let own = SLOT_OF[k];
     let slot = if own != 0 {
@@ -1052,7 +1069,6 @@ unsafe fn slot_for(k: usize) -> u8 {
         nearest_slot(k)
     };
     LUT[k] = slot;
-    LUT_GEN[k] = GEN;
     slot
 }
 
@@ -1062,7 +1078,7 @@ unsafe fn nearest_slot(k: usize) -> u8 {
     let mut best = 0;
     let mut best_d = 0x7FFF_FFFF;
     let mut s = 0;
-    while s < 256 {
+    while s < SLOTS {
         let c = PAL15[s];
         if c != FREE {
             let dr = (c >> 10) as i32 - r;
@@ -1080,11 +1096,20 @@ unsafe fn nearest_slot(k: usize) -> u8 {
     best as u8
 }
 
-/// RGBA framebuffer of the renderer -> palette indices.
+/// RGBA framebuffer of the renderer -> palette indices. Neighbouring pixels often have the
+/// same colour (panel, backgrounds, doubled demo pixels): then the index is simply repeated.
 unsafe fn convert_frame(fb: usize) {
+    let back = (&raw mut BACK) as usize;
+    let mut last = *(fb as *const u32) ^ 1; // differs from the first pixel
+    let mut idx = 0u8;
     let mut i = 0;
     while i < 64000 {
-        BACK[i] = slot_for(key15(*((fb + i * 4) as *const u32)));
+        let c = *((fb + i * 4) as *const u32);
+        if c != last {
+            last = c;
+            idx = slot_for(key15(c));
+        }
+        *((back + i) as *mut u8) = idx;
         i += 1;
     }
 }
@@ -1168,6 +1193,7 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         if defaults {
             vis_set_views(DEFAULT_VIEWS);
         }
+        clear_lut();
         let mut views = 0;
         let target = if view == 8 { 2 } else { view }; // 8: the spectrum in 3D
         while views < target && target < 7 {

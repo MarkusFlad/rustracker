@@ -305,6 +305,13 @@ und stockt deshalb auch dann nicht. Wie alles zusammenspielt – Lader, Protecte
 der Klänge über DMA zum Sound Blaster – beschreibt [docs/DOS.md](docs/DOS.md); die Kurzanleitung
 für den PC steht in `dos/README.TXT`.
 
+**Auf echter Hardware getestet:** Pentium 133 mit 96 MB RAM, VGA und Sound Blaster 16, unter
+MS-DOS 5.0 und im MS-DOS-Modus von Windows 98. Alle Ansichten laufen; Oszilloskop und Spektrum
+ruckeln leicht, der See braucht beim ersten Aufruf ein paar Sekunden, die Demoszene-Effekte
+laufen, die Laufschrift aber weniger flüssig als im Emulator; Mandelbrot, Würfel und Voxel sind
+langsam. Daneben läuft die DOS-Edition bei
+jedem Push in DOSBox (siehe [Continuous Integration](#continuous-integration)).
+
 ## Promo-Video
 
 Das Video unter [markusflad.github.io/rustracker/video](https://markusflad.github.io/rustracker/video/)

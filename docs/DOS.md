@@ -210,13 +210,17 @@ das Programm keine weiteren Segmente.
 2. **Palette wählen** (`update_palette`, alle vier Bilder). VGA zeigt in Modus 13h 256 Farben
    gleichzeitig, jede frei wählbar aus 262 144 (6 Bit pro Grundfarbe). Das Programm zählt, wie
    oft jede Farbe im Bild vorkommt, gerundet auf 5 Bit pro Grundfarbe (32 768 mögliche Farben).
-   Die 256 häufigsten bekommen einen Palettenplatz. Farben, die schon einen Platz haben, behalten
+   Die 255 häufigsten bekommen einen Palettenplatz (Platz 255 dient als Markierung, siehe
+   unten). Das geschieht alle acht Bilder. Farben, die schon einen Platz haben, behalten
    ihn; nur neue Farben ändern Einträge. So verschieben sich die Farben bereits angezeigter
    Pixel nicht.
 3. **Umrechnen** (`convert_frame`). Jedes RGBA-Pixel wird zu einem Byte, dem Palettenindex, im
    Array `BACK: [u8; 64000]`. Farben mit eigenem Platz bekommen ihn direkt; die übrigen den
-   Platz mit der nächstliegenden Farbe. Das Ergebnis der Suche wird je Farbe zwischengespeichert,
-   bis sich die Palette ändert. Dithering gibt es nicht mehr: Bei 256 passend gewählten Farben
+   Platz mit der nächstliegenden Farbe. Das Ergebnis wird je Farbe in einer Tabelle mit einem
+   Byte pro Farbe zwischengespeichert (32 KB, klein genug für den Cache des Pentium; 255 heißt
+   „noch nicht gesucht“), bis sich die Palette ändert. Hat ein Pixel dieselbe Farbe wie sein
+   linker Nachbar, was in Flächen, Schrift und verdoppelten Pixeln oft vorkommt, wird der Index
+   einfach wiederholt. Dithering gibt es nicht mehr: Bei 256 passend gewählten Farben
    sind Verläufe sauber genug.
 4. **Auf den Strahlrücklauf warten** (`wait_retrace`). Das Programm fragt Port 3DAh ab, bis der
    Elektronenstrahl unten angekommen ist und zurück nach oben läuft (Bit 3). In dieser Zeit ist
@@ -277,7 +281,9 @@ mp_render (Replayer, Rust)       DMA-Puffer im konventionellen Speicher
   läuft sie gleichmäßig weiter, egal wie lange ein Bild zum Rendern braucht.
 * **Daten für die Anzeige.** Im selben Interrupt kopiert `capture` die Kanalsignale und das
   Summensignal des Blocks in einen Zwischenpuffer. Die Hauptschleife übernimmt sie in den
-  Renderer, wie im Browser die Nachrichten des AudioWorklets, und berechnet daraus das Spektrum.
+  Renderer, wie im Browser die Nachrichten des AudioWorklets. Das Spektrum (eine FFT über 4096
+  Werte) berechnet sie nur für die Ansichten, die es zeigen (Spektrum, Würfel, See), und dort
+  jedes zweite Mal; auf einem Pentium 133 kostet es spürbar Zeit.
 * **Die Uhr der Anzeige.** Welcher Moment gerade zu hören ist, ergibt sich aus der Zahl der
   Interrupts (fertige Hälften) und dem Stand des DMA-Zählers. Danach richten sich Oszilloskop,
   Pattern-Zeile und alle Effekte.
@@ -318,6 +324,20 @@ Ansichten vor.
 
 ## Testen
 
+* **Echte Hardware.** Ein Pentium 133 mit 96 MB RAM, VGA und Sound Blaster 16, unter MS-DOS 5.0
+  und im MS-DOS-Modus von Windows 98. Alle Ansichten laufen. Oszilloskop und 2D-Spektrum ruckeln
+  leicht, der See braucht beim ersten Aufruf ein paar Sekunden für den Aufbau, die
+  Demoszene-Effekte laufen, die Laufschrift aber weniger flüssig als im Emulator; Mandelbrot,
+  Würfel und Voxel sind langsam und deshalb nur per Option dabei. Die Tests auf diesem Rechner haben Fehler gefunden, die kein Emulator
+  gezeigt hat:
+  * Unter DOS 5.0 stimmte die `BLASTER`-Einstellung nicht mit der Karte überein: kein Ton und
+    ein stehendes Bild. Seitdem liest das Programm IRQ und DMA beim SB16 aus der Karte und
+    meldet fehlende Interrupts.
+  * Das 3D-Spektrum war zu langsam, um sich sichtbar zu bewegen, und die Mandelbrot-Fläche des
+    Würfels wurde nie fertig. Seitdem Festkomma-Linien und kleinere Würfelflächen.
+  * Der erste Aufbau des Sees dauerte so lange, dass das Programm eingefroren wirkte. Seitdem
+    werden die Uferfunktionen nur einmal pro Zelle berechnet, und ein Wachhund meldet, falls die
+    Hauptschleife wirklich hängt.
 * **Linux-Testrahmen** (`dos/selftest.asm`, `dos/selftest_check.py`). Derselbe Rust-Code läuft
   als 32-Bit-Linux-Programm: Der Interrupt wird simuliert, Port-Zugriffe tun nichts, die
   Ladeadresse ist 0. Das prüft Mischer, Renderer, Palette und Umrechnung und liefert für jede
