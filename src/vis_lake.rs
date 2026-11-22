@@ -341,9 +341,9 @@ impl Vis {
     fn draw_lake_hud(&self, s: &Surface) {
         let fs = self.fs;
         let mut t = TextBuf::new();
-        t.s(b"SEE  BASS ");
+        t.s(b"LAKE  BASS ");
         t.num((self.lk_bass * 100.0) as u32, 1, 48);
-        t.s(b"%  WELLEN ");
+        t.s(b"%  WAVES ");
         t.num(self.lk_drops, 1, 48);
         let tw = t.n as i32 * 6 * fs;
         s.fill_a(s.w - tw - 6 * fs, 2 * fs, tw + 4 * fs, 10 * fs, BLACK, 150);

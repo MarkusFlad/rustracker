@@ -17,8 +17,9 @@ kompiliert und spielt im Browser über ein AudioWorklet ab. Dazu gibt es ein Osz
 
 ## Ansichten
 
-Alle Ansichten reagieren live auf die Musik. Umschalten mit **Ansicht** (in der
+Alle Ansichten reagieren live auf die Musik. Umschalten mit **View** (in der
 Framebuffer-Edition auch mit der Taste V). Die Bilder stammen aus der klassischen Edition.
+Die Oberfläche ist in allen Editionen englisch beschriftet.
 
 | | |
 |---|---|
@@ -50,7 +51,7 @@ installiert das Target `wasm32-unknown-unknown`, falls es fehlt. wasm-bindgen od
 werden nicht gebraucht. Wer nur die fertigen Dateien will, findet sie auch im Artefakt `site`
 jedes CI-Laufs (Tab *Actions*).
 
-Im Browser auf **Play** tippen. Standard-Song ist „Neon Techno“ von Drozerix (`www/drozerix_-_neon_techno.mod`, Public Domain, siehe [CREDITS.md](CREDITS.md)). Daneben liegen die eigenen Stücke „Orbitalfunk“ und „November Static“. Einen anderen Standard-Song bettest du mit `python3 scripts/embed_song.py <datei.mod>` in `www/song.js` ein. Fremde Module bitte nicht committen; `.gitignore` hält zum Beispiel `www/12th_warrior.mod` heraus. Eigene `.mod`-Dateien lassen sich über **Datei …** oder per
+Im Browser auf **Play** tippen. Standard-Song ist „Neon Techno“ von Drozerix (`www/drozerix_-_neon_techno.mod`, Public Domain, siehe [CREDITS.md](CREDITS.md)). Daneben liegen die eigenen Stücke „Orbitalfunk“ und „November Static“. Einen anderen Standard-Song bettest du mit `python3 scripts/embed_song.py <datei.mod>` in `www/song.js` ein. Fremde Module bitte nicht committen; `.gitignore` hält zum Beispiel `www/12th_warrior.mod` heraus. Eigene `.mod`-Dateien lassen sich über **File …** oder per
 Drag & Drop laden. Wenn du auf eine Position in der Order-Liste tippst, springt der Player dorthin.
 
 ### Ohne wasm32-Target bauen
@@ -111,7 +112,7 @@ Retrigger, Note Cut/Delay und Pattern Delay.
 
 ## Mandelbrot-Ansicht
 
-Über **Ansicht** wechselst du vom Oszilloskop zum Mandelbrot-Zoom. Das Timing kommt direkt
+Über **View** wechselst du vom Oszilloskop zum Mandelbrot-Zoom. Das Timing kommt direkt
 aus dem Replayer: Position, Zeile, Speed und BPM. Ein Schlag sind 4 Zeilen, ein Takt 16 Zeilen.
 
 - Jede Order-Position startet eine neue Fahrt zu einem anderen Ort im Apfelmännchen, mit einem Lichtblitz auf der Eins.
@@ -120,7 +121,7 @@ aus dem Replayer: Position, Zeile, Speed und BPM. Ein Schlag sind 4 Zeilen, ein 
 - Jede gespielte Note verschiebt die Farbpalette.
 
 Die Anzeige läuft um die Audio-Ausgabelatenz verzögert, damit Bild und Ton zusammenpassen.
-Doppelklick oder **Vollbild** füllt den Bildschirm.
+Doppelklick oder **Fullscreen** füllt den Bildschirm.
 
 ## Spektrum-Ansicht
 
@@ -136,7 +137,7 @@ Angezeigt werden:
 - Ein mitlaufendes Spektrogramm darunter.
 - Die stärkste Frequenz mit Notenname.
 
-Mit **Darstellung: 3D** wird das Spektrum in die Tiefe erweitert. Vorne steht das aktuelle
+Mit **Display: 3D** wird das Spektrum in die Tiefe erweitert. Vorne steht das aktuelle
 Spektrum, dahinter liegen die Spektren der letzten 4 Sekunden. Sie rücken perspektivisch nach
 hinten, werden kleiner und blasser und verdecken einander (Maleralgorithmus). Was älter als
 4 Sekunden ist, wird nicht mehr gezeichnet. In lauten Passagen färben sich die Linien von Grün
@@ -208,8 +209,8 @@ Die sechste Ansicht zeigt einen See aus Voxeln, den die Musik zum Schwingen brin
   Minuten einmal weg und wieder heran, in etwa einer Minute einmal hoch und wieder herab. Der
   Blick folgt dabei so, dass der See im Bild bleibt.
 
-**Auflösung:** In beiden Voxel-Ansichten schaltet der Knopf **Grob/Fein** (Taste R, in der
-klassischen Edition „Auflösung“) zwischen einer glatten Oberfläche (Standard) und den kantigen Voxeln um.
+**Auflösung:** In beiden Voxel-Ansichten schaltet der Knopf **Coarse/Fine** (Taste R, in der
+klassischen Edition „Resolution“) zwischen einer glatten Oberfläche (Standard) und den kantigen Voxeln um.
 Fein interpoliert Höhen und Farben bilinear zwischen den Zellen und tastet die Strahlen enger ab.
 Beim See entscheidet der feine Modus außerdem pro Bildpunkt anhand des interpolierten Abstands zur
 Uferlinie, ob Wasser, Strand oder Wiese zu sehen ist; das Ufer wird so zur glatten Kurve statt

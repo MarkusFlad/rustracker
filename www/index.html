@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rust MOD Tracker · Oszilloskop</title>
+<title>Rust MOD Tracker · Oscilloscope</title>
 <style>
   :root {
     --bg: #07090a; --panel: #0e1213; --line: #1d2a26; --ph: #39ff88; --ph-dim: #1b7a45;
@@ -65,18 +65,18 @@
   <h1>▌RUST MOD TRACKER</h1>
   <button id="play" disabled>▶ Play</button>
   <button id="stop" disabled>■ Stop</button>
-  <button id="pick" type="button">Datei …</button>
+  <button id="pick" type="button">File …</button>
   <input id="file" type="file" class="vh" tabindex="-1">
   <span class="grow"></span>
-  <button id="view" type="button">Ansicht: Oszilloskop</button>
+  <button id="view" type="button">View: Oscilloscope</button>
   <label class="ctl"><input id="loop" type="checkbox"> Loop</label>
   <label class="ctl">Stereo <input id="sep" type="range" min="0" max="100" value="60"></label>
 </header>
-<div id="msg">Lädt WASM …</div>
+<div id="msg">Loading WASM …</div>
 <main>
   <section>
     <div class="box" id="viewBoxOuter">
-      <h2 id="viewTitle">Oszilloskop · Master L/R · XY · Kanäle</h2>
+      <h2 id="viewTitle">Oscilloscope · Master L/R · XY · Channels</h2>
       <div class="viewbox">
         <canvas id="scope"></canvas>
         <canvas id="mandel"></canvas>
@@ -90,10 +90,10 @@
         <div id="mhud"></div>
         <div id="mctl">
           <button id="mEng" type="button" class="monly">Engine: GPU</button>
-          <button id="mPal" type="button">Farben</button>
-          <button id="s3d" type="button" class="sonly">Darstellung: 2D</button>
-          <button id="vRes" type="button">Auflösung: fein</button>
-          <button id="mFs" type="button">Vollbild</button>
+          <button id="mPal" type="button">Colours</button>
+          <button id="s3d" type="button" class="sonly">Display: 2D</button>
+          <button id="vRes" type="button">Resolution: fine</button>
+          <button id="mFs" type="button">Fullscreen</button>
         </div>
       </div>
     </div>
@@ -102,7 +102,7 @@
       <div id="status"></div>
     </div>
     <div class="box" style="margin-top:12px">
-      <h2>Order-Liste (antippen zum Springen)</h2>
+      <h2>Order list (tap to jump)</h2>
       <div id="orders"></div>
     </div>
   </section>
@@ -167,7 +167,7 @@ function parseMod(b) {
     if (o + 4 > b.length) return { s: 0, p: 0, e: 0, x: 0 };
     return { s: (b[o] & 0xF0) | (b[o+2] >> 4), p: ((b[o] & 15) << 8) | b[o+1], e: b[o+2] & 15, x: b[o+3] };
   };
-  return { title: str(b, 0, 20) || '(ohne Titel)', channels: ch, samples, order, npat, pattern };
+  return { title: str(b, 0, 20) || '(untitled)', channels: ch, samples, order, npat, pattern };
 }
 
 /** Pattern cell as "C-2 01 C40". */
@@ -183,9 +183,9 @@ let playing = false, last = null, lastPatKey = '';
 /** Fetches and validates modplayer.wasm (bytes, instantiated in the worklet). */
 async function loadWasm() {
   const res = await fetch('modplayer.wasm');
-  if (!res.ok) throw new Error('modplayer.wasm nicht gefunden – zuerst ./build.sh ausführen');
+  if (!res.ok) throw new Error('modplayer.wasm not found – run ./build.sh first');
   const bytes = await res.arrayBuffer();
-  if (!WebAssembly.validate(bytes)) throw new Error('modplayer.wasm ist ungültig');
+  if (!WebAssembly.validate(bytes)) throw new Error('modplayer.wasm is invalid');
   return bytes;
 }
 
@@ -221,7 +221,7 @@ async function sendSong() {
   const loaded = waitFor('loaded');
   node.port.postMessage({ type: 'load', bytes: modBytes.slice().buffer }, );
   const r = await loaded;
-  if (!r.ok) throw new Error('MOD konnte nicht gelesen werden (Code ' + r.error + ')');
+  if (!r.ok) throw new Error('Could not read the MOD (code ' + r.error + ')');
   node.port.postMessage({ type: 'separation', value: $('sep').value / 100 });
   node.pendingSong = false;
 }
@@ -233,7 +233,7 @@ function setSong(bytes, name) {
   song.file = name;
   last = null; lastPatKey = '';
   renderSamples(); renderOrders(); renderPattern(0, 0);
-  $('msg').textContent = `${song.title} · ${song.channels} Kanäle · ${song.order.length} Positionen`;
+  $('msg').textContent = `${song.title} · ${song.channels} channels · ${song.order.length} positions`;
   if (node) node.pendingSong = true;
   if (rust) rust.load(modBytes);
 }
@@ -247,7 +247,7 @@ async function play() {
     playing = !playing;
     node.port.postMessage({ type: 'play', on: playing });
     updateButtons();
-  } catch (e) { $('msg').textContent = 'Fehler beim Abspielen: ' + e.message; playing = false; updateButtons(); }
+  } catch (e) { $('msg').textContent = 'Playback error: ' + e.message; playing = false; updateButtons(); }
 }
 
 /** Stop and rewind to the start. */
@@ -283,9 +283,9 @@ function onWorkletMessage(e) {
     if (timeline.length > 64) timeline.shift();
     dir.peak = Math.max(m.rms, dir.peak * 0.9995, 0.02);
     dir.inten += (Math.min(1, m.rms / dir.peak) - dir.inten) * 0.04;
-    if (m.ended) { playing = false; updateButtons(); $('msg').textContent = 'Ende des Songs.'; }
+    if (m.ended) { playing = false; updateButtons(); $('msg').textContent = 'End of song.'; }
   } else if (m.type === 'error') {
-    $('msg').textContent = 'Worklet-Fehler: ' + m.message;
+    $('msg').textContent = 'Worklet error: ' + m.message;
   }
 }
 
@@ -319,7 +319,7 @@ function renderPattern(pat, row) {
   if (key === lastPatKey) return;
   lastPatKey = key;
   const n = song.channels, span = 10;
-  const head = '   │ ' + Array.from({ length: n }, (_, c) => `Kanal ${c + 1}`.padEnd(10)).join(' │ ');
+  const head = '   │ ' + Array.from({ length: n }, (_, c) => `Channel ${c + 1}`.padEnd(10)).join(' │ ');
   const lines = [head];
   for (let r = row - span; r <= row + span; r++) {
     if (r < 0 || r > 63) { lines.push(''); continue; }
@@ -336,9 +336,9 @@ function renderStatus(m) {
   const t = ctx ? ctx.currentTime : 0;
   $('status').innerHTML = [
     ['Song', song.title], ['Position', m ? `${m.order} / ${song.order.length - 1}` : '–'],
-    ['Pattern', m ? hex(m.pattern, 2) : '–'], ['Zeile', m ? String(m.row).padStart(2, '0') : '–'],
+    ['Pattern', m ? hex(m.pattern, 2) : '–'], ['Row', m ? String(m.row).padStart(2, '0') : '–'],
     ['Speed', m ? m.speed : '–'], ['BPM', m ? m.tempo : '–'],
-    ['Kanäle', song.channels], ['Rate', ctx ? ctx.sampleRate + ' Hz' : '–'],
+    ['Channels', song.channels], ['Rate', ctx ? ctx.sampleRate + ' Hz' : '–'],
   ].map(([k, v]) => `<span>${k}: <b>${v}</b></span>`).join('');
 }
 
@@ -442,7 +442,7 @@ function drawOscilloscope() {
   for (let c = 0; c < n; c++) { const p = lay.cell(c); grid(p.x, p.y, lay.cw, lay.chh); }
   if (!last || !playing) {
     label('MASTER L/R', pad, pad); label('XY', pad * 2 + mW, pad);
-    for (let c = 0; c < n; c++) { const p = lay.cell(c); label('KANAL ' + (c + 1), p.x, p.y); }
+    for (let c = 0; c < n; c++) { const p = lay.cell(c); label('CHANNEL ' + (c + 1), p.x, p.y); }
     return;
   }
   const m = last, L = m.len, d = m.data, nch = m.channels;
@@ -452,7 +452,7 @@ function drawOscilloscope() {
   const st = trigger(d, ml, L, win) - ml;
   trace(d, ml + st, win, pad, pad, mW, topH - pad, '#39ff88', 1.6);
   trace(d, mr + st, win, pad, pad, mW, topH - pad, 'rgba(255,180,58,0.85)', 1.6);
-  label('MASTER  L ▬ grün   R ▬ bernstein', pad, pad);
+  label('MASTER  L ▬ green   R ▬ amber', pad, pad);
   // XY (Lissajous): x = L, y = R
   g.strokeStyle = '#39ff88'; g.lineWidth = 1; g.shadowColor = '#39ff88'; g.shadowBlur = 5;
   lissajous(g, d, ml, mr, L, pad * 2 + mW + xyW / 2, pad + (topH - pad) / 2, xyW * 0.45, 1.6);
@@ -463,7 +463,7 @@ function drawOscilloscope() {
   for (let c = 0; c < nch; c++) {
     const p = lay.cell(c);
     trace(d, trigger(d, c * L, L, cwin), cwin, p.x, p.y, lay.cw, lay.chh, '#39ff88', 1.2);
-    label(`KANAL ${c + 1}  ${cellText(song.pattern(m.pattern, m.row, c))}`, p.x, p.y);
+    label(`CHANNEL ${c + 1}  ${cellText(song.pattern(m.pattern, m.row, c))}`, p.x, p.y);
   }
   showPosition(m);
 }
@@ -565,7 +565,7 @@ function drawMandel() {
 function showHud(v, info) {
   const zoom = 3 / v.size;
   $('mhud').innerHTML = `${v.place || Mandel.PLACES[dir.place].name} · Zoom ${zoom < 1e4 ? zoom.toFixed(0) : zoom.toExponential(1).replace('e+', '·10^')}×` +
-    `<br>${info || '…'}` + (v.m ? `<br>Pos ${v.m.order} · Zeile ${String(Math.floor(v.rowF)).padStart(2, '0')} · Pegel ${(dir.inten * 100).toFixed(0)} %` : '');
+    `<br>${info || '…'}` + (v.m ? `<br>Pos ${v.m.order} · Row ${String(Math.floor(v.rowF)).padStart(2, '0')} · Level ${(dir.inten * 100).toFixed(0)} %` : '');
 }
 
 // ---- voxel views (landscape and lake) and the demo-scene view: drawn by the Rust renderer (src/vis.rs) in its own
@@ -578,7 +578,7 @@ let rust = null;
 let voxelFine = true;
 $('vRes').onclick = () => {
   voxelFine = !voxelFine;
-  $('vRes').textContent = 'Auflösung: ' + (voxelFine ? 'fein' : 'grob');
+  $('vRes').textContent = 'Resolution: ' + (voxelFine ? 'fine' : 'coarse');
 };
 
 /** Starts the renderer instance on first use: song, Mandelbrot workers. */
@@ -589,7 +589,7 @@ async function initRust() {
     if (modBytes) r.load(modBytes);
     await r.startWorkers('mandel.wasm');
     rust = r;
-  } catch (e) { $('msg').textContent = 'Voxel-Ansichten nicht möglich: ' + e.message; }
+  } catch (e) { $('msg').textContent = 'Voxel views not available: ' + e.message; }
 }
 
 /** A Rust-drawn view: Rust draws it (with its own HUD) at device resolution into the canvas. */
@@ -606,18 +606,18 @@ function drawRust() {
 }
 
 const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel', 'lake', 'demo'];
-const VIEW_NAME = { oscilloscope: 'Oszilloskop', mandel: 'Mandelbrot', spectrum: 'Spektrum', cube: 'Würfel', voxel: 'Voxel', lake: 'See', demo: 'Demoszene' };
-const VIEW_TITLE = { oscilloscope: 'Oszilloskop · Master L/R · XY · Kanäle', mandel: 'Mandelbrot-Zoom im Takt der Musik',
-  spectrum: 'Spektrum · FFT (Rust, 4096 Punkte, Hann-Fenster) · Spektrogramm',
-  cube: 'Würfel · Oszilloskop · XY · Spektrum 2D/3D · Noten · Mandelbrot',
-  voxel: 'Voxel-Landschaft aus dem Mandelbrot-Zoom · Kameraflug um die Gipfel',
-  lake: 'See aus Voxeln · Bass und Takt erzeugen Wellen',
-  demo: 'Demoszene · Copper-Bars · Plasma · Rotozoomer · Rasterzeilen' };
+const VIEW_NAME = { oscilloscope: 'Oscilloscope', mandel: 'Mandelbrot', spectrum: 'Spectrum', cube: 'Cube', voxel: 'Voxel', lake: 'Lake', demo: 'Demo scene' };
+const VIEW_TITLE = { oscilloscope: 'Oscilloscope · Master L/R · XY · Channels', mandel: 'Mandelbrot zoom to the beat of the music',
+  spectrum: 'Spectrum · FFT (Rust, 4096 points, Hann window) · Spectrogram',
+  cube: 'Cube · Oscilloscope · XY · Spectrum 2D/3D · Notes · Mandelbrot',
+  voxel: 'Voxel landscape from the Mandelbrot zoom · Camera flight around the peaks',
+  lake: 'Voxel lake · Bass and beat make waves',
+  demo: 'Demo scene · Copper bars · Plasma · Rotozoomer · Raster bars' };
 /** Switches the view: shows its canvas and controls, starts the Mandelbrot engine on first use. */
 async function setView(mode) {
   viewMode = mode;
   const md = mode === 'mandel', sm = mode === 'spectrum', vx = mode === 'voxel', lk = mode === 'lake', am = mode === 'demo';
-  $('view').textContent = 'Ansicht: ' + VIEW_NAME[mode];
+  $('view').textContent = 'View: ' + VIEW_NAME[mode];
   $('viewTitle').textContent = VIEW_TITLE[mode];
   canvas.style.display = mode === 'oscilloscope' ? 'block' : 'none';
   mcanvas.style.display = md ? 'block' : 'none';
@@ -636,10 +636,10 @@ async function setView(mode) {
     try {
       const m = Mandel(mcanvas);
       const ok = await m.init();
-      if (!ok.gpu && !ok.wasm) throw new Error('weder WebGL2 noch WebAssembly-SIMD verfügbar');
+      if (!ok.gpu && !ok.wasm) throw new Error('neither WebGL2 nor WebAssembly SIMD available');
       mandel = m;
       $('mEng').textContent = 'Engine: ' + (m.engine === 'gpu' ? 'GPU' : 'Rust/WASM');
-    } catch (e) { $('msg').textContent = 'Mandelbrot nicht möglich: ' + e.message; }
+    } catch (e) { $('msg').textContent = 'Mandelbrot not available: ' + e.message; }
   }
   dir.dirty = true; spec.reset = true;
   if (mode === 'oscilloscope') {
@@ -662,14 +662,14 @@ $('mFs').onclick = async () => {
   const box = $('viewBoxOuter');
   const on = !box.classList.contains('fs');
   box.classList.toggle('fs', on);
-  $('mFs').textContent = on ? 'Vollbild beenden' : 'Vollbild';
+  $('mFs').textContent = on ? 'Exit fullscreen' : 'Fullscreen';
   try { if (on && box.requestFullscreen) await box.requestFullscreen(); else if (!on && document.fullscreenElement) await document.exitFullscreen(); }
   catch { /* the frame may not allow real fullscreen: the fixed overlay still fills the window */ }
   dir.dirty = true;
 };
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && $('viewBoxOuter').classList.contains('fs')) {
-    $('viewBoxOuter').classList.remove('fs'); $('mFs').textContent = 'Vollbild';
+    $('viewBoxOuter').classList.remove('fs'); $('mFs').textContent = 'Fullscreen';
   }
 });
 mcanvas.addEventListener('dblclick', () => $('mFs').click());
@@ -730,7 +730,7 @@ function peakInfo(p, binHz) {
   const a = toDb(p[kb - 1]), b = toDb(p[kb]), c = toDb(p[kb + 1]);
   const f = (kb + 0.5 * (a - c) / (a - 2 * b + c || 1)) * binHz;
   const midi = Math.round(69 + 12 * Math.log2(f / 440));
-  return `Spitze ${f.toFixed(1)} Hz ≈ ${NOTE[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1} · ${b.toFixed(1)} dB`;
+  return `Peak ${f.toFixed(1)} Hz ≈ ${NOTE[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1} · ${b.toFixed(1)} dB`;
 }
 const toDb = (v) => 10 * Math.log10(v + 1e-14);
 /** Spectrogram colour 0..1 -> black, deep green, phosphor green, amber, white. */
@@ -891,7 +891,7 @@ function drawSpectrum2D(W, H, dpr, lay, nb, fMax, peakText, sr, m) {
   sg.fillText(peakText || 'FFT 4096 · Hann · ' + (sr / 4096).toFixed(1) + ' Hz/Bin', left + 6, top + 14);
   if (m) {
     sg.textAlign = 'right';
-    sg.fillText(`Pos ${m.order} · Zeile ${String(m.row).padStart(2, '0')}`, left + plotW - 6, top + 14);
+    sg.fillText(`Pos ${m.order} · Row ${String(m.row).padStart(2, '0')}`, left + plotW - 6, top + 14);
     sg.textAlign = 'left';
   }
 }
@@ -926,7 +926,7 @@ function draw3D(now, W, H, dpr, nb, fMax, peakText, sr) {
   sg.textAlign = 'left'; sg.fillStyle = 'rgba(57,255,136,0.75)';
   sg.fillText(peakText || 'FFT 4096 · Hann · ' + (sr / 4096).toFixed(1) + ' Hz/Bin', left + 4, 16);
   sg.textAlign = 'right';
-  sg.fillText(`3D · ${(HIST_AGE / 1000).toFixed(0)} s Verlauf · ${rows.length} Spektren`, W - right - 4, 16);
+  sg.fillText(`3D · ${(HIST_AGE / 1000).toFixed(0)} s history · ${rows.length} spectra`, W - right - 4, 16);
   sg.textAlign = 'left';
 }
 
@@ -945,7 +945,7 @@ function floorGrid(proj, fMax) {
 }
 $('s3d').onclick = () => {
   spec.mode3d = !spec.mode3d;
-  $('s3d').textContent = 'Darstellung: ' + (spec.mode3d ? '3D' : '2D');
+  $('s3d').textContent = 'Display: ' + (spec.mode3d ? '3D' : '2D');
   spec.reset = true;
 };
 
@@ -956,7 +956,7 @@ $('s3d').onclick = () => {
 const FACE_PX = 480;
 const cube = { ready: false, faces: {}, mandel: null, hist: [], disp: null, peak: null, lastSeq: -1, t0: 0, lastT: 0, pulse: 0, rowKey: '' };
 const FACE_ORDER = ['scope', 'xy', 'spec2', 'spec3', 'notes', 'mandel'];
-const FACE_TITLE = { scope: 'MASTER L/R', xy: 'XY', spec2: 'SPEKTRUM 2D', spec3: 'SPEKTRUM 3D', notes: 'TRACKER', mandel: 'MANDELBROT' };
+const FACE_TITLE = { scope: 'MASTER L/R', xy: 'XY', spec2: 'SPECTRUM 2D', spec3: 'SPECTRUM 3D', notes: 'TRACKER', mandel: 'MANDELBROT' };
 
 /** Creates the face canvases and the cube's own GPU Mandelbrot instance (once). */
 async function initCube() {
@@ -1133,10 +1133,10 @@ $('play').onclick = play;
 $('stop').onclick = stop;
 $('loop').onchange = (e) => node && node.port.postMessage({ type: 'loop', on: e.target.checked });
 $('sep').oninput = (e) => node && node.port.postMessage({ type: 'separation', value: e.target.value / 100 });
-$('pick').onclick = () => { try { $('file').click(); } catch (err) { $('msg').textContent = 'Dateiauswahl nicht möglich: ' + err.message; } };
+$('pick').onclick = () => { try { $('file').click(); } catch (err) { $('msg').textContent = 'File selection not available: ' + err.message; } };
 $('file').onchange = async (e) => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  $('msg').textContent = 'Lade ' + f.name + ' …';
+  $('msg').textContent = 'Loading ' + f.name + ' …';
   const wasPlaying = playing;
   if (playing) { playing = false; node.port.postMessage({ type: 'play', on: false }); updateButtons(); }
   setSong(await f.arrayBuffer(), f.name);
@@ -1163,12 +1163,12 @@ document.addEventListener('drop', async (e) => {
     } else {
       const res = await fetch(DEFAULT_SONG);
       if (res.ok) setSong(await res.arrayBuffer(), DEFAULT_SONG);
-      else $('msg').textContent = 'Kein Standard-Song gefunden – bitte eine .mod-Datei wählen.';
+      else $('msg').textContent = 'No default song found – please choose a .mod file.';
     }
     $('play').disabled = $('stop').disabled = false;
     renderStatus(null);
   } catch (e) {
-    $('msg').textContent = 'Fehler beim Start: ' + e.message;
+    $('msg').textContent = 'Error at start: ' + e.message;
   }
   $('play').disabled = $('stop').disabled = false;
   draw();

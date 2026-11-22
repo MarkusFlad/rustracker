@@ -308,11 +308,11 @@ ständig läuft.
 ## Kommandozeile
 
 ```
-RTRACK [Optionen] [DATEI.MOD]
-  /M   Mandelbrot-Zoom zuschalten
-  /W   Würfel zuschalten
-  /V   Voxel-Landschaft (3D-Mandelbrot) zuschalten
-  /?   Hilfe
+RTRACK [options] [FILE.MOD]
+  /M  add the Mandelbrot zoom (slow)
+  /W  add the cube (slow)
+  /V  add the voxel landscape (very slow)
+  /?  this help
 ```
 
 Mandelbrot-Zoom und Voxel-Landschaft brauchen auf einem Pentium und in DOSBox mehrere Sekunden

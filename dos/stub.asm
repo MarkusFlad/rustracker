@@ -617,17 +617,17 @@ print_hex8:                     ; al
     ret
 
 ; ---- data
-msg_mem     db 'RTRACK: nicht genug konventioneller Speicher.', 13, 10, '$'
-msg_v86     db 'RTRACK: Die CPU laeuft im V86-Modus (EMM386, QEMM oder Windows).', 13, 10
-            db 'Bitte DOS ohne Speichermanager starten (HIMEM.SYS ist in Ordnung).', 13, 10, '$'
-msg_bin     db 'RTRACK: RTRACK.BIN fehlt oder ist beschaedigt.', 13, 10, '$'
-msg_mod     db 'RTRACK: Die MOD-Datei fehlt oder ist zu gross (max. 4 MB).', 13, 10, '$'
-msg_ext     db 'RTRACK: nicht genug Erweiterungsspeicher (etwa 10 MB noetig).', 13, 10, '$'
-msg_read    db 'RTRACK: Fehler beim Laden.', 13, 10, '$'
-msg_exc     db 'RTRACK: CPU-Ausnahme $'
-msg_eip     db ' bei EIP $'
-msg_hang    db 'RTRACK: Hauptschleife hing bei EIP $'
-msg_err     db ', Fehlercode $'
+msg_mem     db 'RTRACK: not enough conventional memory.', 13, 10, '$'
+msg_v86     db 'RTRACK: the CPU runs in V86 mode (EMM386, QEMM or Windows).', 13, 10
+            db 'Please start DOS without a memory manager (HIMEM.SYS is fine).', 13, 10, '$'
+msg_bin     db 'RTRACK: RTRACK.BIN is missing or damaged.', 13, 10, '$'
+msg_mod     db 'RTRACK: the MOD file is missing or too large (max. 4 MB).', 13, 10, '$'
+msg_ext     db 'RTRACK: not enough extended memory (about 10 MB needed).', 13, 10, '$'
+msg_read    db 'RTRACK: error while loading.', 13, 10, '$'
+msg_exc     db 'RTRACK: CPU exception $'
+msg_eip     db ' at EIP $'
+msg_hang    db 'RTRACK: main loop hung at EIP $'
+msg_err     db ', error code $'
 msg_crlf    db 13, 10, '$'
 name_bin    db 'RTRACK.BIN', 0
 name_mod    db 'NEON.MOD', 0

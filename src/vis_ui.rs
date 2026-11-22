@@ -213,9 +213,9 @@ impl Vis {
         }
         x = self.add_button(s, x, self.bar_y, h, b"\x82", B_STOP, false);
         x = if narrow {
-            self.add_button(s, x, self.bar_y, h, b"DATEI", B_OPEN, false)
+            self.add_button(s, x, self.bar_y, h, b"FILE", B_OPEN, false)
         } else {
-            self.add_button(s, x, self.bar_y, h, b"DATEI ...", B_OPEN, false)
+            self.add_button(s, x, self.bar_y, h, b"FILE ...", B_OPEN, false)
         };
         x = self.add_view_button(s, x, h, narrow);
         if self.view == V_SPEC {
@@ -223,20 +223,20 @@ impl Vis {
             x = self.add_button(s, x, self.bar_y, h, b"3D", B_3D, on);
         }
         if self.view == V_MANDEL || self.view == V_CUBE || self.view == V_VOXEL {
-            x = self.add_button(s, x, self.bar_y, h, b"FARBEN", B_PAL, false);
+            x = self.add_button(s, x, self.bar_y, h, b"COLOURS", B_PAL, false);
         }
         if self.view == V_VOXEL || self.view == V_LAKE {
             let on = self.vx_fine;
             x = if on {
-                self.add_button(s, x, self.bar_y, h, b"FEIN", B_RES, true)
+                self.add_button(s, x, self.bar_y, h, b"FINE", B_RES, true)
             } else {
-                self.add_button(s, x, self.bar_y, h, b"GROB", B_RES, false)
+                self.add_button(s, x, self.bar_y, h, b"COARSE", B_RES, false)
             };
         }
         let on = self.looping;
         x = self.add_button(s, x, self.bar_y, h, b"LOOP", B_LOOP, on);
         let on = self.fullscreen;
-        self.add_button(s, x, self.bar_y, h, b"VOLL", B_FULL, on);
+        self.add_button(s, x, self.bar_y, h, b"FULL", B_FULL, on);
         let total = bar_h * self.bar_rows;
         s.hline(0, self.w - 1, total - 1, LINE, 256);
         total
@@ -248,34 +248,34 @@ impl Vis {
         let v = self.view;
         if narrow {
             if v == V_OSC {
-                self.add_button(s, x, y, h, b"OSZI", B_VIEW, false)
+                self.add_button(s, x, y, h, b"SCOPE", B_VIEW, false)
             } else if v == V_MANDEL {
                 self.add_button(s, x, y, h, b"MANDEL", B_VIEW, false)
             } else if v == V_SPEC {
-                self.add_button(s, x, y, h, b"SPEKTR", B_VIEW, false)
+                self.add_button(s, x, y, h, b"SPECTR", B_VIEW, false)
             } else if v == V_VOXEL {
                 self.add_button(s, x, y, h, b"VOXEL", B_VIEW, false)
             } else if v == V_LAKE {
-                self.add_button(s, x, y, h, b"SEE", B_VIEW, false)
+                self.add_button(s, x, y, h, b"LAKE", B_VIEW, false)
             } else if v == V_DEMO {
                 self.add_button(s, x, y, h, b"DEMO", B_VIEW, false)
             } else {
-                self.add_button(s, x, y, h, b"W\xc8RFEL", B_VIEW, false)
+                self.add_button(s, x, y, h, b"CUBE", B_VIEW, false)
             }
         } else if v == V_OSC {
-            self.add_button(s, x, y, h, b"ANSICHT: OSZILLOSKOP", B_VIEW, false)
+            self.add_button(s, x, y, h, b"VIEW: OSCILLOSCOPE", B_VIEW, false)
         } else if v == V_MANDEL {
-            self.add_button(s, x, y, h, b"ANSICHT: MANDELBROT", B_VIEW, false)
+            self.add_button(s, x, y, h, b"VIEW: MANDELBROT", B_VIEW, false)
         } else if v == V_SPEC {
-            self.add_button(s, x, y, h, b"ANSICHT: SPEKTRUM", B_VIEW, false)
+            self.add_button(s, x, y, h, b"VIEW: SPECTRUM", B_VIEW, false)
         } else if v == V_VOXEL {
-            self.add_button(s, x, y, h, b"ANSICHT: VOXEL", B_VIEW, false)
+            self.add_button(s, x, y, h, b"VIEW: VOXEL", B_VIEW, false)
         } else if v == V_LAKE {
-            self.add_button(s, x, y, h, b"ANSICHT: SEE", B_VIEW, false)
+            self.add_button(s, x, y, h, b"VIEW: LAKE", B_VIEW, false)
         } else if v == V_DEMO {
-            self.add_button(s, x, y, h, b"ANSICHT: DEMOSZENE", B_VIEW, false)
+            self.add_button(s, x, y, h, b"VIEW: DEMO SCENE", B_VIEW, false)
         } else {
-            self.add_button(s, x, y, h, b"ANSICHT: W\xc8RFEL", B_VIEW, false)
+            self.add_button(s, x, y, h, b"VIEW: CUBE", B_VIEW, false)
         }
     }
 
@@ -320,11 +320,11 @@ impl Vis {
         }
         t.s(b"  ");
         t.num(pl.channels as u32, 1, 48);
-        t.s(b" KAN.  ");
+        t.s(b" CH.  ");
         t.num(pl.song_len as u32, 1, 48);
         t.s(b" POS.");
         if self.ended {
-            t.s(b"  ENDE");
+            t.s(b"  END");
         }
         s.text_buf(3 * fs, 3 * fs, &t, fs, AMBER);
     }
@@ -382,17 +382,21 @@ fn idle_msg(pl: &Player) -> Msg {
     m
 }
 
-/// "POS 00  PAT 00  ZEILE 00  BPM 125/6" (abbreviated unless `roomy`).
+/// "POS 00  PAT 00  ROW 00  BPM 125/6" (abbreviated unless `roomy`).
 fn draw_status(s: &Surface, m: &Msg, fs: i32, roomy: bool) {
     let mut t = TextBuf::new();
     t.s(b"POS ");
     t.num(m.order, 2, 48);
-    t.s(if roomy { b"  PAT " } else { b" PAT  " });
+    if roomy {
+        t.s(b"  PAT ");
+    } else {
+        t.s(b" PAT ");
+    }
     t.hex(m.pattern, 2);
     if roomy {
-        t.s(b"  ZEILE ");
+        t.s(b"  ROW ");
     } else {
-        t.s(b" ZL ");
+        t.s(b" ROW ");
     }
     t.num(m.row, 2, 48);
     t.s(if roomy { b"  BPM " } else { b" BPM  " });

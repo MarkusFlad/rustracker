@@ -315,11 +315,11 @@ function Mandel(canvas) {
 
 /** Interesting places for deep zooms: centre and smallest useful view height. */
 Mandel.PLACES = [
-  { name: 'Seepferdchental', cx: -0.743643887037151, cy: 0.131825904205330, min: 1e-4 },
-  { name: 'Doppelspirale', cx: -0.77568377, cy: 0.13646737, min: 2e-6 },
-  { name: 'Elefantental', cx: 0.2549870375144766, cy: -0.0005679790528465, min: 3e-6 },
-  { name: 'Spirale', cx: -0.10109636384562, cy: 0.95628651080914, min: 2e-5 },
-  { name: 'Mini-Mandelbrot', cx: -1.768778833, cy: -0.001738996, min: 4e-7 },
+  { name: 'Seahorse valley', cx: -0.743643887037151, cy: 0.131825904205330, min: 1e-4 },
+  { name: 'Double spiral', cx: -0.77568377, cy: 0.13646737, min: 2e-6 },
+  { name: 'Elephant valley', cx: 0.2549870375144766, cy: -0.0005679790528465, min: 3e-6 },
+  { name: 'Spiral', cx: -0.10109636384562, cy: 0.95628651080914, min: 2e-5 },
+  { name: 'Mini Mandelbrot', cx: -1.768778833, cy: -0.001738996, min: 4e-7 },
 ];
 self.Mandel = Mandel;
 })();

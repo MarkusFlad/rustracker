@@ -54,19 +54,19 @@ def title_card(name):
     img.alpha_composite(band)
     glow_text(img, (W // 2, 470), 'RUSTRACKER', font(MONO_B, 170), GREEN, glow=18, anchor='mm')
     d = ImageDraw.Draw(img)
-    d.text((W // 2, 610), 'Ein ProTracker-MOD-Player in Rust & WebAssembly', font=font(SANS_B, 46), fill=WHITE + (255,), anchor='mm')
-    d.text((W // 2, 680), 'mit Echtzeit-Visualisierungen im Takt der Musik', font=font(MONO, 32), fill=(185, 216, 198, 255), anchor='mm')
+    d.text((W // 2, 610), 'A ProTracker MOD player in Rust & WebAssembly', font=font(SANS_B, 46), fill=WHITE + (255,), anchor='mm')
+    d.text((W // 2, 680), 'with real-time visualisations to the beat of the music', font=font(MONO, 32), fill=(185, 216, 198, 255), anchor='mm')
     img.save(OUT + name)
 
 def end_card(name):
     img = Image.new('RGBA', (W, H), (2, 6, 4, 195))
     glow_text(img, (W // 2, 330), 'RUSTRACKER', font(MONO_B, 150), GREEN, glow=16, anchor='mm')
     d = ImageDraw.Draw(img)
-    d.text((W // 2, 460), 'Jetzt im Browser ausprobieren – auch auf dem Handy', font=font(SANS_B, 46), fill=WHITE + (255,), anchor='mm')
+    d.text((W // 2, 460), 'Try it in your browser now – on your phone too', font=font(SANS_B, 46), fill=WHITE + (255,), anchor='mm')
     f = font(MONO_B, 40)
     d.text((W // 2, 580), '▶  markusflad.github.io/rustracker', font=f, fill=GREEN + (255,), anchor='mm')
     d.text((W // 2, 650), '{ }  github.com/MarkusFlad/rustracker', font=f, fill=AMBER + (255,), anchor='mm')
-    d.text((W // 2, 800), 'Musik: Drozerix – „Neon Techno“ (Public Domain)', font=font(MONO, 28), fill=(150, 175, 160, 255), anchor='mm')
+    d.text((W // 2, 800), 'Music: Drozerix – “Neon Techno” (public domain)', font=font(MONO, 28), fill=(150, 175, 160, 255), anchor='mm')
     img.save(OUT + name)
 
 def thumbnail(name, left, right):
@@ -80,7 +80,7 @@ def thumbnail(name, left, right):
         d.line((0, y, 1280, y), fill=(2, 6, 4, int(200 * max(0, 1 - abs(y - 330) / 260))))
     img.alpha_composite(shade)
     glow_text(img, (640, 290), 'RUSTRACKER', font(MONO_B, 140), GREEN, glow=14, anchor='mm')
-    ImageDraw.Draw(img).text((640, 410), 'MOD-Player in Rust + WebAssembly', font=font(SANS_B, 52), fill=(240, 250, 244, 255), anchor='mm')
+    ImageDraw.Draw(img).text((640, 410), 'MOD player in Rust + WebAssembly', font=font(SANS_B, 52), fill=(240, 250, 244, 255), anchor='mm')
     img.convert('RGB').save(OUT + name, quality=92)
 
 if len(sys.argv) > 2 and sys.argv[2] == 'thumb':
@@ -89,13 +89,13 @@ if len(sys.argv) > 2 and sys.argv[2] == 'thumb':
 
 os.makedirs(OUT, exist_ok=True)
 title_card('title.png')
-lower_third('c1.png', 1, 'Echtzeit-FFT, selbst geschrieben', 'Balken, Spitzenwerte, Spektrogramm')
-lower_third('c2.png', 2, 'Das Spektrum in 3D', 'die letzten 4 Sekunden in die Tiefe')
-lower_third('c3.png', 3, 'Mandelbrot-Zoom im Takt', 'jede Pattern-Position eine neue Reise')
-lower_third('c4.png', 4, 'Sechs Ansichten auf einem Würfel', 'alle live, perspektivisch korrekt')
-lower_third('c5.png', 5, 'Das Fraktal als Voxel-Landschaft', 'Kameraflug um die Gipfel')
-lower_third('c6.png', 6, 'Ein See, den der Bass bewegt', 'echte Wellengleichung, Wellen überlagern sich')
-lower_third('c7.png', 8, 'Jedes Pixel in Rust gezeichnet', 'ohne Frameworks, ohne fremde Crates')
-lower_third('c8.png', 7, 'Eine Verbeugung vor der Demoszene', 'C64, Amiga und PC: Rasterzeilen, Copper-Bars, Plasma', top=330)  # keeps the scroller free
+lower_third('c1.png', 1, 'Real-time FFT, written from scratch', 'bars, peaks, spectrogram')
+lower_third('c2.png', 2, 'The spectrum in 3D', 'the last 4 seconds receding into depth')
+lower_third('c3.png', 3, 'Mandelbrot zoom to the beat', 'every pattern position a new journey')
+lower_third('c4.png', 4, 'Six views on a cube', 'all live, perspective-correct')
+lower_third('c5.png', 5, 'The fractal as a voxel landscape', 'camera flight around the peaks')
+lower_third('c6.png', 6, 'A lake moved by the bass', 'a real wave equation, waves interfere')
+lower_third('c7.png', 8, 'Every pixel drawn in Rust', 'no frameworks, no third-party crates')
+lower_third('c8.png', 7, 'A bow to the demo scene', 'C64, Amiga and PC: raster bars, copper bars, plasma', top=330)  # keeps the scroller free
 end_card('end.png')
 print('ok')

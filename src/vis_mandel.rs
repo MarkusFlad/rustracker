@@ -398,7 +398,7 @@ impl Vis {
         zoom_text(&mut t, 3.0 / self.v_size);
         t.s(b"  1/");
         t.dec1(self.mb_factor);
-        t.s(b"  PEGEL ");
+        t.s(b"  LEVEL ");
         t.num((self.inten * 100.0) as u32, 1, 48);
         t.ch(37);
         if t.n as i32 * 6 * fs > s.w - 8 * fs {
@@ -413,15 +413,15 @@ impl Vis {
 /// Appends the name of place `p` of the journey.
 fn place_name(t: &mut TextBuf, p: usize) {
     if p == 0 {
-        t.s(b"SEEPFERDCHENTAL");
+        t.s(b"SEAHORSE VALLEY");
     } else if p == 1 {
-        t.s(b"DOPPELSPIRALE");
+        t.s(b"DOUBLE SPIRAL");
     } else if p == 2 {
-        t.s(b"ELEFANTENTAL");
+        t.s(b"ELEPHANT VALLEY");
     } else if p == 3 {
-        t.s(b"SPIRALE");
+        t.s(b"SPIRAL");
     } else {
-        t.s(b"MINI-MANDELBROT");
+        t.s(b"MINI MANDELBROT");
     }
 }
 

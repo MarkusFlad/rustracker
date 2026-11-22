@@ -52,7 +52,7 @@ class ModProcessor extends AudioWorkletProcessor {
   /** Copies a MOD file into WASM memory, parses it and resets the scope buffer. */
   load(m) {
     const bytes = new Uint8Array(m.bytes);
-    if (bytes.length > this.ex.mp_mod_capacity()) throw new Error('MOD-Datei zu groß');
+    if (bytes.length > this.ex.mp_mod_capacity()) throw new Error('MOD file too large');
     this.playing = false;
     new Uint8Array(this.ex.memory.buffer, this.ex.mp_mod_buffer(), bytes.length).set(bytes);
     const n = this.ex.mp_load(bytes.length, sampleRate);

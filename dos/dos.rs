@@ -188,14 +188,14 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         let bi = &*(phys(info_phys) as *const BootInfo);
         LOG_P = bi.log_phys;
         LOG_LEN = bi.log_len;
-        log(b"RUSTRACKER fuer DOS\r\n");
-        log(b"Programm bei ");
+        log(b"RUSTRACKER for DOS\r\n");
+        log(b"Program at ");
         log_hex(base, 8);
-        log(b", Song bei ");
+        log(b", song at ");
         log_hex(bi.mod_phys, 8);
         log(b" (");
         log_dec(bi.mod_len);
-        log(b" Bytes), DMA-Speicher bei ");
+        log(b" bytes), DMA memory at ");
         log_hex(bi.dma_phys, 8);
         log(b"\r\n");
         if bi.env_phys != 0 {
@@ -212,14 +212,14 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
             }
         }
         if !sb_reset() {
-            log(b"Keine Sound-Blaster-Karte an Port ");
+            log(b"No Sound Blaster found at port ");
             log_hex(SB.port, 3);
-            log(b" gefunden (BLASTER-Variable pruefen).\r\n");
+            log(b" (check the BLASTER variable).\r\n");
             return 2;
         }
         let ver = sb_version();
         if ver < 0x200 {
-            log(b"Sound Blaster mit DSP 2.0 oder neuer noetig.\r\n");
+            log(b"A Sound Blaster with DSP 2.0 or newer is required.\r\n");
             return 2;
         }
         SB.sixteen = ver >= 0x400;
@@ -237,11 +237,11 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
             SB.rate as f32,
         );
         if n <= 0 {
-            log(b"Die MOD-Datei konnte nicht gelesen werden.\r\n");
+            log(b"Could not read the MOD file.\r\n");
             return 3;
         }
         if !setup_dma_buffer(bi.dma_phys, bi.dma_len) {
-            log(b"Kein passender DMA-Puffer.\r\n");
+            log(b"No suitable DMA buffer.\r\n");
             return 4;
         }
         log(b"Sound Blaster ");
@@ -250,7 +250,7 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         } else {
             log(b"Pro");
         }
-        log(b" an ");
+        log(b" at ");
         log_hex(SB.port, 3);
         log(b", IRQ ");
         log_dec(SB.irq);
@@ -262,13 +262,13 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         log_dec(ver & 255);
         log(b", ");
         log_dec(SB.rate);
-        log(b" Hz, Puffer bei ");
+        log(b" Hz, buffer at ");
         log_hex(SB.buf, 8);
         log(b"\r\n");
         vis_event(2);
         vis_set_playing(1);
         clear_lut();
-        log(b"Start der Wiedergabe\r\n");
+        log(b"Playback started\r\n");
         sb_start();
         let ok = main_loop();
         sb_stop();
@@ -276,9 +276,9 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
             no_interrupt_help();
             return 5;
         }
-        log(b"Ende nach ");
+        log(b"Stopped after ");
         log_dec(peek32(&raw const N_IRQ));
-        log(b" Bloecken (Sound-Blaster-Interrupts).\r\nTschuess!\r\n");
+        log(b" blocks (Sound Blaster interrupts).\r\nBye!\r\n");
         0
     }
 }
@@ -303,7 +303,7 @@ pub extern "C" fn rust_irq(irq: u32) -> u32 {
         outb(0x20, 0x20);
         if hang {
             sb_stop();
-            log(b"Die Hauptschleife hat 30 Sekunden lang kein Bild fertig bekommen.\r\n");
+            log(b"The main loop has not finished a frame for 30 seconds.\r\n");
             return 1; // dos/entry.asm returns to DOS and reports where the loop was
         }
         0
@@ -591,7 +591,7 @@ unsafe fn sb16_config() {
         0
     };
     if irq != 0 && irq != SB.irq {
-        log(b"Die Karte nutzt IRQ ");
+        log(b"The card uses IRQ ");
         log_dec(irq);
         log(b" (BLASTER: ");
         log_dec(SB.irq);
@@ -608,7 +608,7 @@ unsafe fn sb16_config() {
         SB.dma8
     };
     if dma8 != SB.dma8 {
-        log(b"Die Karte nutzt DMA ");
+        log(b"The card uses DMA ");
         log_dec(dma8);
         log(b" (BLASTER: ");
         log_dec(SB.dma8);
@@ -626,11 +626,11 @@ unsafe fn sb16_config() {
     };
     if dma16 == 0 {
         if dma_bits & 0x0B != 0 {
-            log(b"Kein 16-Bit-DMA-Kanal eingestellt: 8 Bit Mono wie beim Sound Blaster Pro\r\n");
+            log(b"No 16-bit DMA channel set: 8-bit mono like a Sound Blaster Pro\r\n");
             SB.sixteen = false;
         }
     } else if dma16 != SB.dma16 {
-        log(b"Die Karte nutzt 16-Bit-DMA ");
+        log(b"The card uses 16-bit DMA ");
         log_dec(dma16);
         log(b" (BLASTER: H");
         log_dec(SB.dma16);
@@ -641,13 +641,13 @@ unsafe fn sb16_config() {
 
 /// Explains a missing interrupt: whether the DMA transfer ran at all, and what to check.
 unsafe fn no_interrupt_help() {
-    log(b"Der Sound Blaster hat keinen einzigen Interrupt gemeldet (IRQ ");
+    log(b"The Sound Blaster has not sent a single interrupt (IRQ ");
     log_dec(SB.irq);
     log(b", DMA ");
     log_dec(if SB.sixteen { SB.dma16 } else { SB.dma8 });
-    log(b").\r\nBitte die BLASTER-Variable mit der Einstellung der Karte vergleichen, z. B.\r\n");
-    log(b"SET BLASTER=A220 I5 D1 H5 T6. Plug-and-Play-Karten muss unter reinem DOS erst ihr\r\n");
-    log(b"Treiber einrichten (bei Creative: CTCM bzw. DIAGNOSE /S in der AUTOEXEC.BAT).\r\n");
+    log(b").\r\nPlease compare the BLASTER variable with the settings of the card, e.g.\r\n");
+    log(b"SET BLASTER=A220 I5 D1 H5 T6. Under plain DOS, plug-and-play cards must first be\r\n");
+    log(b"set up by their driver (Creative: CTCM or DIAGNOSE /S in AUTOEXEC.BAT).\r\n");
 }
 
 /// Views without a command-line option: all but Mandelbrot zoom (1), cube (3) and voxel
@@ -673,11 +673,11 @@ unsafe fn parse_options(p: usize) -> bool {
             } else if o == 87 {
                 views = views | (1 << 3); // W
             } else {
-                log(b"RTRACK [Optionen] [DATEI.MOD]\r\n");
-                log(b"  /M  Mandelbrot-Zoom zuschalten (langsam)\r\n");
-                log(b"  /W  Wuerfel zuschalten (langsam)\r\n");
-                log(b"  /V  Voxel-Landschaft zuschalten (sehr langsam)\r\n");
-                log(b"  /?  diese Hilfe\r\n");
+                log(b"RTRACK [options] [FILE.MOD]\r\n");
+                log(b"  /M  add the Mandelbrot zoom (slow)\r\n");
+                log(b"  /W  add the cube (slow)\r\n");
+                log(b"  /V  add the voxel landscape (very slow)\r\n");
+                log(b"  /?  this help\r\n");
                 return false;
             }
         }

@@ -1,44 +1,49 @@
-RUSTRACKER fuer DOS
-===================
+RUSTRACKER for DOS
+==================
 
-Ein MOD-Player mit Pattern-Anzeige, Oszilloskop, Spektrum, Mandelbrot-, Wuerfel-,
-Voxel-, See- und Demoszene-Ansicht, geschrieben in Rust (ohne Standardbibliothek).
+A MOD player with pattern display, oscilloscope, spectrum, Mandelbrot, cube,
+voxel, lake and demo scene views, written in Rust (without a standard library).
 
-Aufruf:   RTRACK [Optionen] [datei.mod]      (ohne Namen: NEON.MOD)
+Usage:    RTRACK [options] [file.mod]      (without a name: NEON.MOD)
 
-Optionen: /M   Mandelbrot-Zoom zuschalten
-          /W   Wuerfel zuschalten
-          /V   Voxel-Landschaft (3D-Mandelbrot) zuschalten
-          /?   Hilfe
-          Diese Ansichten sind fuer einen Pentium 133 zu aufwendig (Mandelbrot
-          und Voxel brauchen mehrere Sekunden pro Bild) und sind deshalb ohne
-          Option nicht dabei. Beispiel: RTRACK /M /W /V NEON.MOD
+Options:  /M   add the Mandelbrot zoom
+          /W   add the cube
+          /V   add the voxel landscape (3D Mandelbrot)
+          /?   help
+          These views are too demanding for a Pentium 133 (Mandelbrot and
+          voxel take several seconds per frame), so they are left out unless
+          asked for. Example: RTRACK /M /W /V NEON.MOD
 
-Tasten:   Esc        Ende
-          Leertaste  Pause
-          S          Stopp (an den Anfang)
-          Links/Rechts  vorige/naechste Position
-          V          naechste Ansicht (nur die freigeschalteten)
-          3          Spektrum 2D/3D
-          P          Farbpalette (Mandelbrot, Voxel)
-          R          Voxel grob/fein
-          F          nur die Ansicht (ohne Leiste und Tabelle)
+Keys:     Esc        quit
+          Space      pause
+          S          stop (back to the start)
+          Left/Right previous/next position
+          V          next view (only the enabled ones)
+          3          spectrum 2D/3D
+          P          colour palette (Mandelbrot, voxel)
+          R          voxels coarse/fine
+          F          view only (without bar and table)
 
-Voraussetzungen
-  * 386 oder neuer, sinnvoll ab Pentium. Pattern-Tabelle, Oszilloskop, Spektrum
-    und Demoszene-Ansicht sind fuer einen Pentium 133 gedacht; die Mandelbrot-, Wuerfel-,
-    Voxel- und See-Ansicht rechnen dort nur wenige Bilder pro Sekunde.
-  * 16 MB RAM (das Programm braucht etwa 10 MB Erweiterungsspeicher)
+Requirements
+  * 386 or newer, a Pentium makes sense. Pattern table, oscilloscope,
+    spectrum and demo scene are meant for a Pentium 133; the lake builds
+    itself in a few seconds, and Mandelbrot, cube and voxel views manage only
+    a few frames per second there.
+  * 16 MB RAM (the program needs about 10 MB of extended memory)
   * VGA
-  * Sound Blaster 16 (44,1 kHz Stereo, 16 Bit) oder Sound Blaster 2.0/Pro
-    (22 kHz Mono, 8 Bit); die Einstellungen kommen aus der Variablen BLASTER,
-    z. B.  SET BLASTER=A220 I5 D1 H5 T6
-  * DOS im Real Mode: HIMEM.SYS ist in Ordnung, EMM386/QEMM nicht, und nicht in
-    einer Windows-DOS-Box. Am einfachsten: beim Start F8 druecken und EMM386
-    ueberspringen, oder eine Bootdiskette ohne Speichermanager.
+  * Sound Blaster 16 (44.1 kHz stereo, 16 bit) or Sound Blaster 2.0/Pro
+    (22 kHz mono, 8 bit). The settings come from the BLASTER variable, e.g.
+    SET BLASTER=A220 I5 D1 H5 T6; a Sound Blaster 16 also reports its IRQ and
+    DMA itself.
+  * DOS in real mode: HIMEM.SYS is fine, EMM386/QEMM are not, and neither is a
+    Windows DOS box. Easiest: press F8 while booting and skip EMM386, or use a
+    boot floppy without a memory manager.
 
-Das Programm laeuft auch in DOSBox: dosbox -conf dosbox.conf (liegt bei).
+Tested on a Pentium 133 with 96 MB RAM and a Sound Blaster 16 under MS-DOS
+5.0 and in the MS-DOS mode of Windows 98.
 
-Fuer automatische Tests: SET RTRACK=T10 beendet nach 10 Sekunden Wiedergabe.
+The program also runs in DOSBox: dosbox -conf dosbox.conf (included).
 
-Quelltext: https://github.com/MarkusFlad/rustracker
+For automatic tests: SET RTRACK=T10 quits after 10 seconds of playback.
+
+Source code: https://github.com/MarkusFlad/rustracker

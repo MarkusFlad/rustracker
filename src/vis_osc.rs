@@ -197,7 +197,7 @@ impl Vis {
         self.trace(s, k, st, cwin, PHOSPHOR, 1.2);
         let cell = pl.cell(m.pattern as usize, m.row as usize, c as usize);
         let mut t = TextBuf::new();
-        t.s(b"KANAL ");
+        t.s(b"CHANNEL ");
         t.num(c as u32 + 1, 1, 48);
         t.s(b"  ");
         cell_text(&mut t, &cell, 2);

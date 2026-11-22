@@ -57,4 +57,4 @@ mv RESULT.TXT $NAME-result.txt
 cat $NAME.log
 echo "--- RTRACK.COM said:"
 cat $NAME-result.txt
-grep -q "Tschuess" $NAME-result.txt
+grep -q "Bye!" $NAME-result.txt

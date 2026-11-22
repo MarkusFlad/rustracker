@@ -72,7 +72,7 @@ impl Vis {
             caption(s, b"PC: ROTOZOOMER");
         } else if part == 3 {
             self.draw_c64(s, t, cur, pl);
-            caption(s, b"C64: RASTERZEILEN");
+            caption(s, b"C64: RASTER BARS");
         } else {
             s.clear(BLACK);
             self.draw_stars(s, dt);
@@ -86,7 +86,7 @@ impl Vis {
     /// Scroll text: title, sample names and a few words about the player.
     fn build_scroll_text(&mut self, pl: &Player) {
         self.dm_len = 0;
-        self.scroll_str(b"RUSTRACKER GRUESST DIE DEMOSZENE UND SPIELT:   ");
+        self.scroll_str(b"RUSTRACKER GREETS THE DEMO SCENE AND PLAYS:   ");
         let mut i = 0;
         while i < 20 {
             self.scroll_byte(pl.mod_byte(i));
@@ -98,7 +98,7 @@ impl Vis {
             self.scroll_sample_name(pl, sm);
             sm += 1;
         }
-        self.scroll_str(b"   ***   GRUESSE AN ALLE CODER, GRAFIKER UND MUSIKER  -  AUF C64, AMIGA, ATARI ST UND PC  -  AN DIE ERFINDER DER TRACKER  -  AN ALLE, DIE AUF PARTYS DIE NACHT DURCHCODEN  -  EIN MOD-PLAYER IN RUST, JEDES PIXEL HANDGEMACHT   ***          ");
+        self.scroll_str(b"   ***   GREETINGS TO ALL CODERS, GRAPHICIANS AND MUSICIANS  -  ON C64, AMIGA, ATARI ST AND PC  -  TO THE INVENTORS OF THE TRACKER  -  TO EVERYONE CODING THROUGH THE NIGHT AT A PARTY  -  A MOD PLAYER IN RUST, EVERY PIXEL HANDMADE   ***          ");
     }
 
     /// Appends the name of sample `sm` (trimmed, unprintable bytes as spaces) and a separator.

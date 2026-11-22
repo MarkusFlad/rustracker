@@ -130,7 +130,7 @@ impl Vis {
         f.clear(BG);
         f.grid(0, 0, f.w, f.h);
         self.draw_spec2(&f, dt, cur, false);
-        self.face_label(&f, b"SPEKTRUM");
+        self.face_label(&f, b"SPECTRUM");
         let f = self.face_surface(3);
         f.clear(BG);
         self.draw_spec3(&f, now, cur, false);
@@ -180,7 +180,7 @@ impl Vis {
                 line += 1;
             }
         }
-        self.face_label(&f, b"NOTEN");
+        self.face_label(&f, b"NOTES");
     }
 
     /// The finished Mandelbrot buffer, zoomed in a little and without rotation.

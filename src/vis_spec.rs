@@ -102,7 +102,7 @@ impl Vis {
         if !pk.found {
             return;
         }
-        t.s(b"SPITZE ");
+        t.s(b"PEAK ");
         t.dec1(pk.freq);
         t.s(b" HZ = ");
         t.midi(midi_note(pk.freq));
@@ -141,7 +141,7 @@ impl Vis {
         let mut t = TextBuf::new();
         self.peak_text(cur, &mut t);
         if t.n == 0 {
-            t.s(b"FFT 4096 PUNKTE  HANN  10.8 HZ/BIN");
+            t.s(b"FFT 4096 POINTS  HANN  10.8 HZ/BIN");
         }
         s.text_buf(lay.left + 3 * fs, 3 * fs, &t, fs, PHOSPHOR);
     }
@@ -308,7 +308,7 @@ impl Vis {
         self.peak_text(cur, &mut t);
         s.text_buf(4 * fs, 3 * fs, &t, fs, PHOSPHOR);
         if (t.n as i32 + 18) * 6 * fs < s.w {
-            s.text(s.w - 16 * 6 * fs, 3 * fs, b"3D  4 S VERLAUF", fs, PHOS_DIM);
+            s.text(s.w - 16 * 6 * fs, 3 * fs, b"3D  4 S HISTORY", fs, PHOS_DIM);
         }
     }
 
