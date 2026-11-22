@@ -30,11 +30,11 @@
     <span><kbd>Esc</kbd> Ende</span>
   </div>
   <p>Ton startet erst nach einem Klick in das Bild (Regel der Browser).
-     Die Geschwindigkeit hängt vom Rechner ab, auf dem der Browser läuft; ein Pentium 133 ist eher langsamer.</p>
+     Die emulierte CPU ist auf etwa 50.000 DOSBox-Zyklen eingestellt, grob ein Pentium-Rechner; die 3D-Ansichten laufen deshalb ruckelig. Schneller: <a href="?b=fast">?b=fast</a>.</p>
 </main>
 <script>
   // Test switches (for tracking down emulator problems):
-  //   ?b=prompt|fixed|dynamic|mem16  another bundle (see dos/package.sh)
+  //   ?b=prompt|max|fast|dynamic|mem16  another bundle (see dos/package.sh)
   //   ?x=1                             DOSBox-X instead of DOSBox
   //   ?ui=1                            js-dos side bar (menu, logs)
   const q = new URLSearchParams(location.search);
