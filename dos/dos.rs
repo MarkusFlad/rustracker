@@ -217,6 +217,9 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
             return 2;
         }
         SB.sixteen = ver >= 0x400;
+        if SB.sixteen {
+            sb16_config();
+        }
         SB.rate = if SB.sixteen {
             44100
         } else {
@@ -260,8 +263,12 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         vis_set_playing(1);
         log(b"Start der Wiedergabe\r\n");
         sb_start();
-        main_loop();
+        let ok = main_loop();
         sb_stop();
+        if !ok {
+            no_interrupt_help();
+            return 5;
+        }
         log(b"Ende nach ");
         log_dec(peek32(&raw const N_IRQ));
         log(b" Bloecken (Sound-Blaster-Interrupts).\r\nTschuess!\r\n");
@@ -291,7 +298,8 @@ pub extern "C" fn rust_irq(irq: u32) {
 // ------------------------------------------------------------------ main loop
 
 /// Keyboard, renderer slots and frames until Escape.
-unsafe fn main_loop() {
+/// Returns false if the Sound Blaster never sent an interrupt.
+unsafe fn main_loop() -> bool {
     let mut e0 = false;
     let mut first = true;
     let mut frame = 0u32;
@@ -306,7 +314,7 @@ unsafe fn main_loop() {
             let ext = e0;
             e0 = false;
             if code & 0x80 == 0 && handle_key(code, ext) {
-                return;
+                return true;
             }
         }
         if peek32(&raw const PEND_READY) != 0 {
@@ -314,7 +322,12 @@ unsafe fn main_loop() {
         }
         let now = audio_ms();
         if QUIT_MS > 0.0 && now >= QUIT_MS {
-            return;
+            return true;
+        }
+        // a frame takes at least one vertical retrace (1/70 s): after 100 frames without
+        // a single interrupt, interrupt or DMA channel of the card are not what we use
+        if frame == 100 && peek32(&raw const N_IRQ) == 0 {
+            return false;
         }
         let fb = vis_frame(now, SW, SH, 0.5) as usize;
         if first {
@@ -520,12 +533,91 @@ unsafe fn capture(mix: usize) {
     poke32(&raw mut PEND_READY, 1);
 }
 
-/// Views without a command-line option: all but Mandelbrot zoom (1) and voxel landscape (4),
-/// which take several seconds per picture in DOSBox and on a slow Pentium.
-const DEFAULT_VIEWS: u32 = 0x6D; // 0b110_1101
+/// SB16: the card's own IRQ and DMA settings (mixer registers 80h and 81h) take precedence
+/// over the BLASTER variable, which is often missing or wrong outside Windows. Without a
+/// 16-bit DMA channel the card plays like a Sound Blaster Pro (8 bit).
+unsafe fn sb16_config() {
+    outb(SB.port + 4, 0x80);
+    let irq_bits = inb(SB.port + 5) & 15;
+    outb(SB.port + 4, 0x81);
+    let dma_bits = inb(SB.port + 5);
+    let irq = if irq_bits == 1 {
+        9
+    } else if irq_bits == 2 {
+        5
+    } else if irq_bits == 4 {
+        7
+    } else if irq_bits == 8 {
+        10
+    } else {
+        0
+    };
+    if irq != 0 && irq != SB.irq {
+        log(b"Die Karte nutzt IRQ ");
+        log_dec(irq);
+        log(b" (BLASTER: ");
+        log_dec(SB.irq);
+        log(b")\r\n");
+        SB.irq = irq;
+    }
+    let dma8 = if dma_bits & 2 != 0 {
+        1
+    } else if dma_bits & 1 != 0 {
+        0
+    } else if dma_bits & 8 != 0 {
+        3
+    } else {
+        SB.dma8
+    };
+    if dma8 != SB.dma8 {
+        log(b"Die Karte nutzt DMA ");
+        log_dec(dma8);
+        log(b" (BLASTER: ");
+        log_dec(SB.dma8);
+        log(b")\r\n");
+        SB.dma8 = dma8;
+    }
+    let dma16 = if dma_bits & 0x20 != 0 {
+        5
+    } else if dma_bits & 0x40 != 0 {
+        6
+    } else if dma_bits & 0x80 != 0 {
+        7
+    } else {
+        0
+    };
+    if dma16 == 0 {
+        if dma_bits & 0x0B != 0 {
+            log(b"Kein 16-Bit-DMA-Kanal eingestellt: 8 Bit Mono wie beim Sound Blaster Pro\r\n");
+            SB.sixteen = false;
+        }
+    } else if dma16 != SB.dma16 {
+        log(b"Die Karte nutzt 16-Bit-DMA ");
+        log_dec(dma16);
+        log(b" (BLASTER: H");
+        log_dec(SB.dma16);
+        log(b")\r\n");
+        SB.dma16 = dma16;
+    }
+}
+
+/// Explains a missing interrupt: whether the DMA transfer ran at all, and what to check.
+unsafe fn no_interrupt_help() {
+    log(b"Der Sound Blaster hat keinen einzigen Interrupt gemeldet (IRQ ");
+    log_dec(SB.irq);
+    log(b", DMA ");
+    log_dec(if SB.sixteen { SB.dma16 } else { SB.dma8 });
+    log(b").\r\nBitte die BLASTER-Variable mit der Einstellung der Karte vergleichen, z. B.\r\n");
+    log(b"SET BLASTER=A220 I5 D1 H5 T6. Plug-and-Play-Karten muss unter reinem DOS erst ihr\r\n");
+    log(b"Treiber einrichten (bei Creative: CTCM bzw. DIAGNOSE /S in der AUTOEXEC.BAT).\r\n");
+}
+
+/// Views without a command-line option: all but Mandelbrot zoom (1), cube (3) and voxel
+/// landscape (4), which are slow on a Pentium 133 and in DOSBox.
+const DEFAULT_VIEWS: u32 = 0x65; // 0b110_0101
 
 /// Reads the options of the command line `p` (length byte, then the text): /M adds the
-/// Mandelbrot zoom, /V the voxel landscape, /? only prints the help. Words without / or -
+/// Mandelbrot zoom, /W the cube, /V the voxel landscape, /? only prints the help. Words without / or -
 /// are the song (RTRACK.COM loads it). Returns false when the program should not start.
 unsafe fn parse_options(p: usize) -> bool {
     let len = *(p as *const u8) as usize;
@@ -540,9 +632,12 @@ unsafe fn parse_options(p: usize) -> bool {
                 views = views | (1 << 1); // M
             } else if o == 86 {
                 views = views | (1 << 4); // V
+            } else if o == 87 {
+                views = views | (1 << 3); // W
             } else {
                 log(b"RTRACK [Optionen] [DATEI.MOD]\r\n");
                 log(b"  /M  Mandelbrot-Zoom zuschalten (langsam)\r\n");
+                log(b"  /W  Wuerfel zuschalten (langsam)\r\n");
                 log(b"  /V  Voxel-Landschaft zuschalten (sehr langsam)\r\n");
                 log(b"  /?  diese Hilfe\r\n");
                 return false;
@@ -1015,9 +1110,13 @@ unsafe fn show_frame() {
 /// Plays `secs` seconds of a song without hardware (16-bit stereo 44.1 kHz into a buffer),
 /// drawing 70 frames per second, and writes the last frame as palette indices (64000
 /// bytes) followed by the palette (768 bytes, 0..255) to `out`. `view` 0..6 shows that view
-/// throughout, 7 steps through all of them. Used by dos/selftest.asm.
+/// throughout, 7 steps through all of them, 8 shows the spectrum in 3D; plus 16 · n to draw
+/// only n frames per second, as on a slow PC. Used by dos/selftest.asm.
 #[no_mangle]
 pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, out: *mut u8) -> u32 {
+    // view + 16 * fps: draw `fps` frames per second (default 70), like a slow PC
+    let fps = if view >= 16 { view / 16 } else { 70 };
+    let view = view % 16;
     unsafe {
         BASE = 0;
         SB.sixteen = true;
@@ -1032,14 +1131,18 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         vis_event(2);
         vis_set_playing(1);
         let mut views = 0;
-        while views < view && view < 7 {
+        let target = if view == 8 { 2 } else { view }; // 8: the spectrum in 3D
+        while views < target && target < 7 {
             vis_key(118);
             views += 1;
         }
-        let frames = secs * 70;
+        if view == 8 {
+            vis_key(51);
+        }
+        let frames = secs * fps;
         let mut f = 0;
         while f < frames {
-            let now = f as f64 * 1000.0 / 70.0;
+            let now = f as f64 * 1000.0 / fps as f64;
             // the "interrupt": a block whenever its half has been played
             while (N_IRQ as f64) * BLOCK as f64 * 1000.0 / SB.rate as f64 <= now {
                 rust_sb_irq_selftest();
@@ -1047,7 +1150,7 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
             if PEND_READY != 0 {
                 commit_pending();
             }
-            if view >= 7 && f % (70 * 4) == 70 * 4 - 1 && views < 6 {
+            if view == 7 && f % (fps * 4) == fps * 4 - 1 && views < 6 {
                 vis_key(118);
                 views += 1;
             }

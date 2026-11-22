@@ -121,12 +121,15 @@ Für DOS gibt es mit `--cfg dos` nur wenige Abweichungen in `src/`:
 * Linien in 16.16-Festkomma statt in Gleitkomma (`gfx.rs`): Jede Umwandlung von Gleitkomma in
   eine ganze Zahl kostet auf der x87-FPU des Pentium viele Takte, weil dafür der Rundungsmodus
   umgeschaltet wird,
-* höchstens ein Kurvenpunkt pro Pixelspalte im Oszilloskop (`vis_osc.rs`).
+* höchstens ein Kurvenpunkt pro Pixelspalte im Oszilloskop (`vis_osc.rs`),
+* die Linien des 3D-Spektrums ebenfalls in Festkomma (`vis_spec.rs`),
+* Würfelflächen mit 128 × 128 statt 256 × 256 Pixeln und eine Mandelbrot-Fläche in halber
+  Auflösung mit kleinerem Rechenanteil pro Bild (`vis.rs`, `vis_cube.rs`, `vis_mandel.rs`).
 
 **Speziell für DOS (`dos/dos.rs`).**
 
 * `rust_main`: Ablaufsteuerung von der Boot-Information bis zum Ende.
-* Kommandozeile (`/M`, `/V`, `/?`) und Umgebungsvariablen (`BLASTER`, `RTRACK`).
+* Kommandozeile (`/M`, `/W`, `/V`, `/?`) und Umgebungsvariablen (`BLASTER`, `RTRACK`).
 * Sound Blaster: DSP zurücksetzen, Version lesen, DMA-Controller und DSP programmieren, im
   Interrupt nachmischen, am Ende anhalten.
 * Tastatur: direkt am Tastatur-Controller abgefragt.
@@ -247,6 +250,12 @@ mp_render (Replayer, Rust)       DMA-Puffer im konventionellen Speicher
   die ersten 16 MB physischen Speichers erreicht und ein Transfer keine 64-KB-Grenze
   (16-Bit-DMA: 128-KB-Grenze) überschreiten darf. Der Lader holt dafür 32 KB von DOS, `dos.rs`
   sucht darin eine passende Lage für 8 KB.
+* **Die Einstellungen der Karte** (Port, IRQ, DMA-Kanäle) stehen in der Umgebungsvariablen
+  `BLASTER`, die die Installation der Karte in die AUTOEXEC.BAT schreibt, z. B.
+  `A220 I5 D1 H5 T6`. Fehlt sie, gelten diese Werte. Beim Sound Blaster 16 liest das Programm
+  IRQ und DMA außerdem direkt aus den Mixer-Registern 80h und 81h der Karte und nimmt diese
+  Werte, wenn sie von `BLASTER` abweichen; es meldet das beim Beenden. Ist kein 16-Bit-DMA-Kanal
+  eingestellt, spielt es wie ein Sound Blaster Pro mit 8 Bit.
 * **Sound Blaster 16** (DSP-Version 4 oder höher): 44,1 kHz, 16 Bit, Stereo über den 16-Bit-
   DMA-Kanal (meist 5). Programmiert werden Adresse, Seite und Länge des ganzen Puffers im
   DMA-Controller (Ports C4h–D8h, Seitenregister 8Bh), Modus „Auto-Init, Lesen“; dann am DSP die
@@ -269,6 +278,13 @@ mp_render (Replayer, Rust)       DMA-Puffer im konventionellen Speicher
   Interrupts (fertige Hälften) und dem Stand des DMA-Zählers. Danach richten sich Oszilloskop,
   Pattern-Zeile und alle Effekte.
 
+Stimmen IRQ oder DMA-Kanal nicht, kommt nie ein Interrupt: Es entsteht kein Ton, und weil die
+Uhr der Anzeige an den Interrupts hängt, steht auch das Bild still. Das Programm erkennt das
+nach 100 Bildern ohne Interrupt (mindestens anderthalb Sekunden, weil jedes Bild auf einen
+Strahlrücklauf wartet), beendet sich und erklärt, was zu prüfen ist. Plug-and-Play-Karten wie
+der Sound Blaster 16 PnP sind unter reinem DOS erst nutzbar, wenn ihr Treiber (bei Creative
+CTCM) sie eingerichtet hat; Windows 98 erledigt das, auch für den „MS-DOS-Modus“.
+
 Beim Beenden hält das Programm die Wiedergabe an (DSP-Befehle D5h/D9h bzw. D0h/DAh), maskiert
 den Interrupt, sperrt den DMA-Kanal und setzt den DSP zurück.
 
@@ -284,12 +300,14 @@ ständig läuft.
 ```
 RTRACK [Optionen] [DATEI.MOD]
   /M   Mandelbrot-Zoom zuschalten
+  /W   Würfel zuschalten
   /V   Voxel-Landschaft (3D-Mandelbrot) zuschalten
   /?   Hilfe
 ```
 
 Mandelbrot-Zoom und Voxel-Landschaft brauchen auf einem Pentium und in DOSBox mehrere Sekunden
-pro Bild. Ohne Option springt die Taste V deshalb über sie hinweg. Der Lader überspringt Wörter,
+pro Bild, der Würfel mit seinen sechs lebenden Flächen ruckelt auf einem Pentium 133 stark.
+Ohne Option springt die Taste V deshalb über sie hinweg. Der Lader überspringt Wörter,
 die mit `/` oder `-` beginnen, bei der Suche nach dem Songnamen; `RTRACK.BIN` liest die Optionen
 selbst aus der Kommandozeile im PSP und gibt dem Renderer mit `vis_set_views` die erlaubten
 Ansichten vor.

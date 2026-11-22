@@ -7,11 +7,12 @@ Voxel-, See- und Demoszene-Ansicht, geschrieben in Rust (ohne Standardbibliothek
 Aufruf:   RTRACK [Optionen] [datei.mod]      (ohne Namen: NEON.MOD)
 
 Optionen: /M   Mandelbrot-Zoom zuschalten
+          /W   Wuerfel zuschalten
           /V   Voxel-Landschaft (3D-Mandelbrot) zuschalten
           /?   Hilfe
-          Beide Ansichten rechnen auf einem Pentium oder in DOSBox mehrere
-          Sekunden pro Bild und sind deshalb ohne Option nicht dabei.
-          Beispiel: RTRACK /M /V NEON.MOD
+          Diese Ansichten sind fuer einen Pentium 133 zu aufwendig (Mandelbrot
+          und Voxel brauchen mehrere Sekunden pro Bild) und sind deshalb ohne
+          Option nicht dabei. Beispiel: RTRACK /M /W /V NEON.MOD
 
 Tasten:   Esc        Ende
           Leertaste  Pause

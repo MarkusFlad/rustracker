@@ -222,6 +222,10 @@ impl Vis {
         if !self.b_active {
             self.mb_start(FACE_N as i32, FACE_N as i32, true);
         }
+        // DOS: a smaller share of Mandelbrot iterations per frame, so the cube keeps turning
+        #[cfg(dos)]
+        self.mb_work(300_000);
+        #[cfg(not(dos))]
         self.mb_work(1_500_000);
     }
 

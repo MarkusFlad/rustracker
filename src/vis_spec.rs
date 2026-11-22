@@ -314,6 +314,7 @@ impl Vis {
 
     /// Draws a line from (x0, y0) to (x1, y1) only where it lies above the current
     /// horizon, and raises the next horizon (`newh`) accordingly.
+    #[cfg(not(dos))]
     pub(crate) fn horizon_line(
         &mut self,
         s: &Surface,
@@ -345,6 +346,57 @@ impl Vis {
                     }
                 }
             }
+            i += 1;
+        }
+    }
+
+    /// [`Vis::horizon_line`] for DOS: stepped in 16.16 fixed point instead of converting
+    /// every pixel from floating point, which is slow on the Pentium's FPU.
+    ///
+    /// # Arguments
+    /// * `s` - surface to draw on
+    /// * `x0`, `y0` - start of the segment
+    /// * `x1`, `y1` - end of the segment
+    /// * `c` - colour
+    /// * `front` - the front row (gets a glow)
+    #[cfg(dos)]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn horizon_line(
+        &mut self,
+        s: &Surface,
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        c: u32,
+        front: bool,
+    ) {
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let n = (maxf(absf(dx), absf(dy)) as i32) + 1;
+        let mut fx = (x0 * 65536.0) as i32;
+        let mut fy = (y0 * 65536.0) as i32;
+        let sx = (dx * 65536.0) as i32 / n;
+        let sy = (dy * 65536.0) as i32 / n;
+        let mut i = 0;
+        while i <= n {
+            let x = fx >> 16;
+            let y = fy >> 16;
+            if x >= 0 && x < s.w && (x as usize) < MAXW {
+                let xu = x as usize;
+                if y < self.horizon[xu] {
+                    s.set(x, y, c);
+                    if front {
+                        s.glow(x, y - 1, c, 90);
+                        s.glow(x, y + 1, c, 90);
+                    }
+                    if y < self.newh[xu] {
+                        self.newh[xu] = y;
+                    }
+                }
+            }
+            fx += sx;
+            fy += sy;
             i += 1;
         }
     }

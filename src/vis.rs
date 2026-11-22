@@ -41,7 +41,11 @@ pub(crate) const HIST_AGE: f64 = 4000.0;
 pub(crate) const SG_W: usize = 512;
 pub(crate) const SG_H: usize = 200;
 pub(crate) const MB_MAX: usize = 170_000;
+#[cfg(not(dos))]
 pub(crate) const FACE_N: usize = 256;
+/// DOS: cube faces of 128 x 128 pixels (a quarter of the work per frame).
+#[cfg(dos)]
+pub(crate) const FACE_N: usize = 128;
 pub(crate) const PAL_LEN: usize = 2048;
 pub(crate) const MAXW: usize = 1800;
 pub(crate) const F_MIN: f64 = 30.0;

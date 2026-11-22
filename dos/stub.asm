@@ -1,6 +1,7 @@
 ; RTRACK.COM: DOS loader of the Rustracker.
 ;   RTRACK [options] [song.mod]   (without a name: NEON.MOD next to RTRACK.COM)
-;   options: /M Mandelbrot zoom, /V voxel landscape (slow views, off by default), /? help
+;   options: /M Mandelbrot zoom, /W cube, /V voxel landscape (slow views, off by default),
+;   /? help
 ; Loads RTRACK.BIN (32-bit image, see entry.asm) and the song into extended memory (XMS
 ; when HIMEM.SYS is loaded, otherwise the memory reported by INT 15h/88h above 1.1 MB),
 ; reserves a DMA buffer in conventional memory, switches to VGA mode 13h and starts the

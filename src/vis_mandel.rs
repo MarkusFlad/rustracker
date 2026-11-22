@@ -132,8 +132,14 @@ impl Vis {
 
     /// Start rendering a new back buffer for the current view (overscan for rotation).
     pub(crate) fn mb_start(&mut self, vw: i32, vh: i32, face: bool) {
+        // DOS: the cube's Mandelbrot face at half resolution, so it completes within a few
+        // frames of a slow PC
+        #[cfg(dos)]
+        let face_f = 2.0;
+        #[cfg(not(dos))]
+        let face_f = 1.0;
         let mut f = if face {
-            1.0
+            face_f
         } else if self.mb_factor < 1.0 {
             2.0
         } else {

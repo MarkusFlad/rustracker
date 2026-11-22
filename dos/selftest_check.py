@@ -10,9 +10,11 @@ from PIL import Image
 song, outdir = sys.argv[1], pathlib.Path(sys.argv[2])
 secs = sys.argv[3] if len(sys.argv) > 3 else "4"
 outdir.mkdir(parents=True, exist_ok=True)
-names = ["osci", "mandel", "spektrum", "wuerfel", "voxel", "see", "demo"]
+names = ["osci", "mandel", "spektrum", "wuerfel", "voxel", "see", "demo", None, "spektrum3d"]
 failed = False
 for view, name in enumerate(names):
+    if name is None:
+        continue
     raw = outdir / f"{name}.raw"
     r = subprocess.run(["dos/out/selftest", song, str(raw), secs, str(view)])
     data = raw.read_bytes()

@@ -1,5 +1,6 @@
 ; Linux (i386) test harness for the DOS build: runs rust_selftest without hardware.
-;   selftest SONG.MOD OUT.RAW SECONDS VIEW   (VIEW 0..6, or 7 for all in turn)
+;   selftest SONG.MOD OUT.RAW SECONDS VIEW   (VIEW 0..6, 7 for all in turn, 8 spectrum 3D;
+;   plus 16 * n for n frames per second instead of 70)
 ; OUT.RAW receives the last frame as 64000 palette indices and the palette (768 bytes).
 ; Port access is a no-op here; the interrupt is simulated inside rust_selftest.
 bits 32
