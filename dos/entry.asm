@@ -138,6 +138,8 @@ irq_common:                     ; [esp] = IRQ number
     push dword [esp+32]
     call rust_irq               ; acknowledges the interrupt at the PIC
     add esp, 4
+    test eax, eax               ; not 0: the main loop hangs (watchdog in dos.rs)
+    jnz hang_exit
     frstor [fpu_state]
     popad
     add esp, 4
@@ -145,6 +147,16 @@ irq_common:                     ; [esp] = IRQ number
 
 ignore_int:
     iretd
+
+hang_exit:                      ; back to DOS with 200h; the interrupted EIP (where the
+    mov ecx, [esp+36]           ; main loop was) goes into the boot info like for exceptions
+    mov ebx, [boot_phys]
+    sub ebx, [base_phys]
+    mov [ebx+40], ecx
+    mov dword [ebx+44], 0
+    mov eax, 0x200
+    mov esp, stack_top
+    jmp exit_to_dos
 
 ; ---- interrupt controllers: master to 20h, slave to 28h, everything masked
 remap_pic:

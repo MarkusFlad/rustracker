@@ -245,6 +245,19 @@ rm_back:
     mov eax, [exit_code]
     cmp eax, 100h
     jb .done
+    cmp eax, 200h               ; the watchdog stopped a hanging main loop
+    jne .exception
+    mov dx, msg_hang
+    mov ah, 9
+    int 21h
+    mov eax, [bi_eip]
+    call print_hex32
+    mov dx, msg_crlf
+    mov ah, 9
+    int 21h
+    mov byte [exit_code], 8
+    jmp .done
+.exception:
     mov dx, msg_exc
     mov ah, 9
     int 21h
@@ -613,6 +626,7 @@ msg_ext     db 'RTRACK: nicht genug Erweiterungsspeicher (etwa 10 MB noetig).', 
 msg_read    db 'RTRACK: Fehler beim Laden.', 13, 10, '$'
 msg_exc     db 'RTRACK: CPU-Ausnahme $'
 msg_eip     db ' bei EIP $'
+msg_hang    db 'RTRACK: Hauptschleife hing bei EIP $'
 msg_err     db ', Fehlercode $'
 msg_crlf    db 13, 10, '$'
 name_bin    db 'RTRACK.BIN', 0

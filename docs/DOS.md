@@ -97,6 +97,10 @@ hier nicht:
   Hardware-Interrupts nicht mit den Prozessor-Ausnahmen 0–31 zusammenfallen.
 * Prozessor-Ausnahmen abfangen: Bei einem Fehler kehrt das Programm zum Lader zurück, der Nummer,
   Adresse (EIP) und Fehlercode anzeigt, statt den Rechner hängen zu lassen.
+* Den Wachhund ausführen: Meldet `rust_irq`, dass die Hauptschleife 30 Sekunden lang kein Bild
+  fertig bekommen hat, kehrt der Einstieg direkt aus dem Interrupt zum Lader zurück. Der zeigt
+  die Adresse, an der die Hauptschleife gerade war; mit der Linker-Map (`rtrack.map`) lässt
+  sie sich einer Funktion zuordnen.
 
 **Die Laufzeit (`rt.asm`).** Der Compiler erzeugt für Kopierschleifen und große Zuweisungen
 Aufrufe von `memcpy` und `memset`. Normalerweise kommen die aus der C-Bibliothek oder aus

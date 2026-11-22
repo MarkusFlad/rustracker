@@ -243,15 +243,18 @@ impl Vis {
         while y < n {
             let mut x = 0;
             while x < n {
+                // land() and shore_height() are expensive (many seconds on a Pentium for
+                // the whole grid): computed once per cell and kept for the layers below
                 let (wx, wy) = cell_world(x, y);
                 let i = (y * n + x) as usize;
-                let inside = land(wx, wy) < 0.0 && x > 0 && y > 0 && x < n - 1 && y < n - 1;
+                let l = land(wx, wy);
+                let sh = shore_height(wx, wy) as u16;
+                let inside = l < 0.0 && x > 0 && y > 0 && x < n - 1 && y < n - 1;
                 self.lk_mask[i] = if inside { 1 } else { 0 };
-                self.lk_h[i] = if inside {
-                    WATER as u16
-                } else {
-                    shore_height(wx, wy) as u16
-                };
+                self.lk_beach[i] = if l < BEACH { 1 } else { 0 };
+                self.lk_edge[i] = l as f32;
+                self.lk_lh[i] = sh;
+                self.lk_h[i] = if inside { WATER as u16 } else { sh };
                 x += 1;
             }
             y += 1;
@@ -272,19 +275,16 @@ impl Vis {
         self.lk_ready = true;
     }
 
-    /// The layers for the smooth shoreline of the fine mode: the distance of every cell to
-    /// the shoreline, the land continued below the water, the land and beach colours lit by
-    /// the land's slope, and calm water on land cells.
+    /// The layers for the smooth shoreline of the fine mode (distance to the shoreline and
+    /// land below the water are already filled in by `build_shore`): the land and beach
+    /// colours lit by the land's slope, and calm water on land cells.
     fn build_shore_layers(&mut self) {
         let n = LAKE_N as i32;
         let mut y = 0;
         while y < n {
             let mut x = 0;
             while x < n {
-                let (wx, wy) = cell_world(x, y);
                 let i = (y * n + x) as usize;
-                self.lk_edge[i] = land(wx, wy) as f32;
-                self.lk_lh[i] = shore_height(wx, wy) as u16;
                 if self.lk_mask[i] == 0 {
                     self.lk_wh[i] = WATER as u16;
                     self.lk_wc[i] = water_colour(0.0, 0.0);
@@ -321,9 +321,9 @@ impl Vis {
         let n = LAKE_N as i32;
         let g = (self.lake_height(x + 1, y) - self.lake_height(x - 1, y))
             + (self.lake_height(x, y + 1) - self.lake_height(x, y - 1));
-        let (wx, wy) = cell_world(x, y);
-        let hh = self.lk_h[(y * n + x) as usize] as f64;
-        let base = if land(wx, wy) < BEACH {
+        let i = (y * n + x) as usize;
+        let hh = self.lk_h[i] as f64;
+        let base = if self.lk_beach[i] != 0 {
             SAND
         } else {
             grass_colour(hh)
@@ -367,8 +367,8 @@ fn cell_world(x: i32, y: i32) -> (f64, f64) {
 }
 
 /// Radius of a deformed circle in direction (c, s) = (cos θ, sin θ): mean radius `r`
-/// times 1 + Σ a·sin(nθ + p).
-fn blob_radius(c: f64, s: f64, r: f64, ns: &[u32; 4], amps: &[f64; 4], phases: &[f64; 4]) -> f64 {
+/// times 1 + Σ a·sin(nθ + p), with `trig` = [cos p₀..p₃, sin p₀..p₃] (see [`phase_trig`]).
+fn blob_radius(c: f64, s: f64, r: f64, ns: &[u32; 4], amps: &[f64; 4], trig: &[f64; 8]) -> f64 {
     let mut f = 1.0;
     let (mut cn, mut sn) = (1.0, 0.0); // cos nθ, sin nθ
     let mut n = 1;
@@ -380,17 +380,50 @@ fn blob_radius(c: f64, s: f64, r: f64, ns: &[u32; 4], amps: &[f64; 4], phases: &
             cn = t;
             n += 1;
         }
-        f += amps[j] * (sn * cos(phases[j]) + cn * sin(phases[j]));
+        f += amps[j] * (sn * trig[j] + cn * trig[4 + j]);
         j += 1;
     }
     r * f
+}
+
+/// Cosines and sines of the shoreline and island phases, computed once: [`blob_radius`]
+/// runs for every cell of the lake, and recomputing them there made building the lake take
+/// many seconds on a Pentium.
+static mut SHORE_TRIG: [f64; 8] = [0.0; 8];
+static mut ISLE_TRIG: [f64; 8] = [0.0; 8];
+static mut TRIG_READY: bool = false;
+
+/// [cos p₀..p₃, sin p₀..p₃] of four phases.
+fn phase_trig(p: &[f64; 4]) -> [f64; 8] {
+    [
+        cos(p[0]),
+        cos(p[1]),
+        cos(p[2]),
+        cos(p[3]),
+        sin(p[0]),
+        sin(p[1]),
+        sin(p[2]),
+        sin(p[3]),
+    ]
+}
+
+/// The phase tables of shoreline and island (filled on first use).
+fn lake_trig() -> (&'static [f64; 8], &'static [f64; 8]) {
+    unsafe {
+        if !TRIG_READY {
+            SHORE_TRIG = phase_trig(&SHORE_P);
+            ISLE_TRIG = phase_trig(&ISLE_P);
+            TRIG_READY = true;
+        }
+        (&*(&raw const SHORE_TRIG), &*(&raw const ISLE_TRIG))
+    }
 }
 
 /// How far a world point lies on land: the distance beyond the shoreline (positive on the
 /// shore and on the island, negative in the water).
 fn land(wx: f64, wy: f64) -> f64 {
     let d = sqrt(wx * wx + wy * wy) + 1e-9;
-    let shore = d - blob_radius(wx / d, wy / d, LAKE_R, &SHORE_N, &SHORE_A, &SHORE_P);
+    let shore = d - blob_radius(wx / d, wy / d, LAKE_R, &SHORE_N, &SHORE_A, lake_trig().0);
     maxf(shore, island(wx, wy))
 }
 
@@ -398,7 +431,7 @@ fn land(wx: f64, wy: f64) -> f64 {
 fn island(wx: f64, wy: f64) -> f64 {
     let (dx, dy) = (wx - ISLE_X, wy - ISLE_Y);
     let d = sqrt(dx * dx + dy * dy) + 1e-9;
-    blob_radius(dx / d, dy / d, ISLE_R, &ISLE_N, &ISLE_A, &ISLE_P) - d
+    blob_radius(dx / d, dy / d, ISLE_R, &ISLE_N, &ISLE_A, lake_trig().1) - d
 }
 
 /// Land height at a world point: hills rising away from the shore, the island as a steeper

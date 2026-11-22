@@ -99,6 +99,10 @@ static mut PEND_META: [u32; 7] = [0; 7]; // order, row, pattern, speed, tempo, n
 static mut LAST_T: f64 = 0.0;
 static mut QUIT_MS: f64 = 0.0; // > 0: quit at this playback time
 static mut SPEC_TURN: u32 = 0;
+// watchdog: frames finished by the main loop, and its state in the interrupt
+static mut FRAMES_DONE: u32 = 0;
+static mut WD_FRAME: u32 = 0;
+static mut WD_IRQ: u32 = 0;
 static mut SPEC_PTR: usize = 0;
 
 // picture: an adaptive 256-colour palette over the colours of RGB555 (see `update_palette`)
@@ -279,20 +283,40 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
 /// A hardware interrupt `irq` (0..15); dos/entry.asm saves the FPU state around it. The Sound
 /// Blaster's interrupt mixes the next block; every interrupt is acknowledged at the PIC.
 #[no_mangle]
-pub extern "C" fn rust_irq(irq: u32) {
+pub extern "C" fn rust_irq(irq: u32) -> u32 {
     unsafe {
+        let mut hang = false;
         if irq == SB.irq {
             inb(SB.port + if SB.sixteen { 0x0F } else { 0x0E }); // acknowledge at the DSP
             let h = NEXT_HALF;
             fill_half(h);
             NEXT_HALF = h ^ 1;
             N_IRQ += 1;
+            hang = watchdog();
         }
         if irq >= 8 {
             outb(0xA0, 0x20);
         }
         outb(0x20, 0x20);
+        if hang {
+            sb_stop();
+            log(b"Die Hauptschleife hat 30 Sekunden lang kein Bild fertig bekommen.\r\n");
+            return 1; // dos/entry.asm returns to DOS and reports where the loop was
+        }
+        0
     }
+}
+
+/// Watchdog: true when the main loop has not finished a frame for 30 seconds of playback
+/// (the slowest views need a few seconds per frame on a Pentium 133).
+unsafe fn watchdog() -> bool {
+    let f = FRAMES_DONE;
+    if f != WD_FRAME {
+        WD_FRAME = f;
+        WD_IRQ = N_IRQ;
+        return false;
+    }
+    (N_IRQ - WD_IRQ) as f64 * BLOCK as f64 > 30.0 * SB.rate as f64
 }
 
 // ------------------------------------------------------------------ main loop
@@ -342,6 +366,7 @@ unsafe fn main_loop() -> bool {
         wait_retrace();
         write_dac();
         show_frame();
+        poke32(&raw mut FRAMES_DONE, frame);
     }
 }
 
@@ -1114,13 +1139,23 @@ unsafe fn show_frame() {
 /// only n frames per second, as on a slow PC. Used by dos/selftest.asm.
 #[no_mangle]
 pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, out: *mut u8) -> u32 {
-    // view + 16 * fps: draw `fps` frames per second (default 70), like a slow PC
+    // view + 16 * fps: draw `fps` frames per second (default 70), like a slow PC;
+    // + 4096: 8-bit mono at 22 kHz like a Sound Blaster Pro
+    // + 8192: only the views without command-line options
+    let defaults = view >= 8192;
+    let view = view % 8192;
+    let pro = view >= 4096;
+    let view = view % 4096;
     let fps = if view >= 16 { view / 16 } else { 70 };
     let view = view % 16;
     unsafe {
         BASE = 0;
-        SB.sixteen = true;
-        SB.rate = 44100;
+        SB.sixteen = !pro;
+        SB.rate = if pro {
+            1_000_000 / (1_000_000 / 22050)
+        } else {
+            44100
+        };
         static mut FAKE_DMA: [u8; 16384] = [0; 16384];
         if !setup_dma_buffer((&raw const FAKE_DMA) as u32, 16384) {
             return 1;
@@ -1130,6 +1165,9 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         }
         vis_event(2);
         vis_set_playing(1);
+        if defaults {
+            vis_set_views(DEFAULT_VIEWS);
+        }
         let mut views = 0;
         let target = if view == 8 { 2 } else { view }; // 8: the spectrum in 3D
         while views < target && target < 7 {

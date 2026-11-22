@@ -280,6 +280,8 @@ pub struct Vis {
     pub(crate) lk_b: [f32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
     pub(crate) lk_flip: bool,
     pub(crate) lk_mask: [u8; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+    /// 1 where a shore cell lies within the beach width of the water (sand colour).
+    pub(crate) lk_beach: [u8; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
     pub(crate) lk_h: [u16; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
     pub(crate) lk_c: [u32; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
     pub(crate) lk_ready: bool,
@@ -418,6 +420,7 @@ impl Vis {
             lk_b: [0.0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
             lk_flip: false,
             lk_mask: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
+            lk_beach: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
             lk_h: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
             lk_c: [0; crate::vis_lake::LAKE_N * crate::vis_lake::LAKE_N],
             lk_ready: false,
