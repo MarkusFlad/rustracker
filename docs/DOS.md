@@ -334,6 +334,17 @@ wartet die Hauptschleife nicht auf den Strahlrücklauf, sonst würde jede schnel
 Esc beendet), beim Beenden in den Meldungen und in `BENCH.TXT`. `SET RTRACK=B3` misst 3 Sekunden
 pro Ansicht und beendet das Programm danach von selbst; so läuft er in der CI.
 
+Hat die CPU einen Zeitstempelzähler (`RDTSC`, ab Pentium; geprüft über `CPUID` in
+`dos/rt.asm`), misst die Hauptschleife zusätzlich die Takte jeder Stufe eines Bildes:
+Übernahme der Audiodaten mit FFT, Rust-Renderer, Palette und Umrechnung, DAC und Kopie in den
+VGA-Speicher. Der Interrupt zählt die Takte, die er mit dem Mischen verbringt. Aus den Takten
+und der Abspielzeit über den ganzen Benchmark ergibt sich die Taktfrequenz, damit lassen sich
+die Takte in Millisekunden umrechnen. Außerdem rechnet das Programm aus, wie viele Bilder pro
+Sekunde beim normalen Abspielen herauskämen: Dort wartet jedes Bild auf den nächsten
+Strahlrücklauf, die Bilddauer wird also auf ganze 1/70 s aufgerundet. Diese zweite Tabelle
+steht in den Meldungen und in `BENCH.TXT`. In DOSBox gibt es den Zähler nur mit
+`cputype=pentium_slow`; der Benchmark-Lauf in der CI stellt das ein.
+
 ## Testen
 
 * **Echte Hardware.** Ein Pentium 133 mit 96 MB RAM, VGA und Sound Blaster 16, unter MS-DOS 5.0

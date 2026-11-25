@@ -13,7 +13,7 @@ bits 16
 org 100h
 
 IOBUF_SIZE equ 32768
-LOG_SIZE   equ 2048
+LOG_SIZE   equ 4096
 
 start:
     mov sp, stack_top

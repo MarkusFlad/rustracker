@@ -15,7 +15,9 @@
 //! address `p` is pointer `p - base` (the 4 GB limit makes this wrap around correctly).
 
 use crate::api::*;
+use crate::gfx::TextBuf;
 use crate::vis::ACT_BENCH;
+use crate::vis_bench::{BENCH_N, SC_NAMES};
 
 extern "C" {
     fn inb(port: u32) -> u32;
@@ -24,6 +26,8 @@ extern "C" {
     fn irq_disable();
     fn peek32(addr: *const u32) -> u32;
     fn poke32(addr: *mut u32, value: u32);
+    fn rt_has_tsc() -> u32;
+    fn rt_tsc() -> f64;
 }
 
 /// Frames per Sound Blaster block (half the DMA buffer) = one renderer slot.
@@ -113,6 +117,26 @@ static mut WD_FRAME: u32 = 0;
 static mut WD_IRQ: u32 = 0;
 static mut SPEC_PTR: usize = 0;
 
+// benchmark details: CPU clock cycles per stage of a frame, summed per scene (`bench_detail`)
+static mut HAS_TSC: bool = false;
+/// Cycles spent in the Sound Blaster interrupt (wraps around; only differences count).
+static mut IRQ_CYC: u32 = 0;
+const BD_IN: usize = 0; // audio data into the renderer, FFT
+const BD_DRAW: usize = 1; // the Rust renderer
+const BD_PAL: usize = 2; // palette and conversion to palette indices
+const BD_VGA: usize = 3; // DAC and copy into video memory
+const BD_SND: usize = 4; // in the sound interrupt during the frame
+const BD_ALL: usize = 5; // the whole frame
+const BD_QMS: usize = 6; // ms the frame would take when waiting for the retrace
+const BD_FR: usize = 7; // frames
+const BD_K: usize = 8;
+static mut BD: [f64; BENCH_N * BD_K] = [0.0; BENCH_N * BD_K];
+static mut BD_STATE: u32 = 0; // benchmark state seen last
+static mut BD_C0: f64 = 0.0; // cycles and playback time at the start, for the clock rate
+static mut BD_MS0: f64 = 0.0;
+static mut BD_MHZ: f64 = 0.0;
+static mut BD_READY: bool = false;
+
 // picture: an adaptive 256-colour palette over the colours of RGB555 (see `update_palette`)
 static mut BACK: [u8; 64000] = [0; 64000];
 /// Colour (RGB555) in each palette slot, or `FREE`.
@@ -196,6 +220,7 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         let bi = &*(phys(info_phys) as *const BootInfo);
         LOG_P = bi.log_phys;
         LOG_LEN = bi.log_len;
+        HAS_TSC = rt_has_tsc() != 0;
         log(b"RUSTRACKER for DOS\r\n");
         log(b"Program at ");
         log_hex(base, 8);
@@ -318,6 +343,7 @@ unsafe fn log_bench(info_phys: u32) {
         log_byte(*((p + i) as *const u8) as u32);
         i += 1;
     }
+    log_details();
     let bi = &mut *(phys(info_phys) as *mut BootInfo);
     bi.bench_off = start;
     bi.bench_len = LOG_N - start;
@@ -333,7 +359,14 @@ pub extern "C" fn rust_irq(irq: u32) -> u32 {
         if irq == SB.irq {
             inb(SB.port + if SB.sixteen { 0x0F } else { 0x0E }); // acknowledge at the DSP
             let h = NEXT_HALF;
-            fill_half(h);
+            if HAS_TSC {
+                let t = rt_tsc();
+                fill_half(h);
+                let d = (rt_tsc() - t) as u32;
+                poke32(&raw mut IRQ_CYC, peek32(&raw const IRQ_CYC) + d);
+            } else {
+                fill_half(h);
+            }
             NEXT_HALF = h ^ 1;
             N_IRQ += 1;
             hang = watchdog();
@@ -372,6 +405,9 @@ unsafe fn main_loop() -> bool {
     let mut first = true;
     let mut frame = 0u32;
     loop {
+        let c0 = tsc();
+        let ms0 = audio_ms();
+        let irq0 = peek32(&raw const IRQ_CYC);
         let k = read_key();
         if k >= 0 {
             let code = k as u32;
@@ -385,9 +421,11 @@ unsafe fn main_loop() -> bool {
                 return true;
             }
         }
+        let c1 = tsc();
         if peek32(&raw const PEND_READY) != 0 {
             commit_pending();
         }
+        let c2 = tsc();
         let now = audio_ms();
         if QUIT_MS > 0.0 && now >= QUIT_MS {
             return true;
@@ -402,6 +440,7 @@ unsafe fn main_loop() -> bool {
             return false;
         }
         let fb = vis_frame(now, SW, SH, 0.5) as usize;
+        let c3 = tsc();
         if first {
             vis_set_fine(0); // coarse voxels (the renderer sets its defaults on the first frame)
             first = false;
@@ -411,13 +450,163 @@ unsafe fn main_loop() -> bool {
         }
         frame += 1;
         convert_frame(fb);
+        let c4 = tsc();
         if bench != 1 {
             wait_retrace(); // the benchmark measures without waiting for the retrace (70 Hz)
         }
+        let c5 = tsc();
         write_dac();
         show_frame();
+        let c6 = tsc();
         poke32(&raw mut FRAMES_DONE, frame);
+        let ms1 = audio_ms();
+        let snd = (peek32(&raw const IRQ_CYC) - irq0) as f64;
+        bench_detail(
+            c2 - c1,
+            c3 - c2,
+            c4 - c3,
+            c6 - c5,
+            c6 - c0,
+            snd,
+            ms1 - ms0,
+            ms1,
+        );
     }
+}
+
+/// CPU clock cycles since reset, or 0 without a time stamp counter.
+unsafe fn tsc() -> f64 {
+    if HAS_TSC {
+        rt_tsc()
+    } else {
+        0.0
+    }
+}
+
+/// Adds the stages of one frame (in cycles; `ms` the whole frame in ms of playback time) to
+/// the benchmark details of the scene being measured; notices start and end of the
+/// benchmark (`now` = playback time in ms) to work out the clock rate.
+#[allow(clippy::too_many_arguments)]
+unsafe fn bench_detail(
+    t_in: f64,
+    t_draw: f64,
+    t_pal: f64,
+    t_vga: f64,
+    t_all: f64,
+    snd: f64,
+    ms: f64,
+    now: f64,
+) {
+    let st = vis_bench_state();
+    if st == 1 && BD_STATE != 1 {
+        let mut i = 0;
+        while i < BENCH_N * BD_K {
+            BD[i] = 0.0;
+            i += 1;
+        }
+        BD_READY = false;
+        BD_C0 = tsc();
+        BD_MS0 = now;
+    } else if st == 2 && BD_STATE == 1 {
+        let span = now - BD_MS0;
+        BD_MHZ = if span > 0.0 {
+            (tsc() - BD_C0) / (span * 1000.0)
+        } else {
+            0.0
+        };
+        BD_READY = true;
+    }
+    BD_STATE = st;
+    let scene = vis_bench_measuring();
+    if scene < 0 || !HAS_TSC {
+        return;
+    }
+    let b = scene as usize * BD_K;
+    BD[b + BD_IN] += t_in;
+    BD[b + BD_DRAW] += t_draw;
+    BD[b + BD_PAL] += t_pal;
+    BD[b + BD_VGA] += t_vga;
+    BD[b + BD_SND] += snd;
+    BD[b + BD_ALL] += t_all;
+    // waiting for the retrace rounds every frame up to whole refreshes of 1/70 s
+    let period = 1000.0 / 70.086;
+    let n = (ms / period) as u32;
+    let n = if (n as f64) * period < ms { n + 1 } else { n };
+    BD[b + BD_QMS] += (if n < 1 { 1 } else { n }) as f64 * period;
+    BD[b + BD_FR] += 1.0;
+}
+
+/// Appends the table of the benchmark details to the messages.
+unsafe fn log_details() {
+    if !BD_READY {
+        return;
+    }
+    log(b"\r\n");
+    if !HAS_TSC || BD_MHZ <= 0.0 {
+        log(b"No time stamp counter (386/486): no details per stage.\r\n");
+        return;
+    }
+    let mut t = TextBuf::new();
+    t.s(b"DOS DETAILS  CPU ");
+    t.num((BD_MHZ + 0.5) as u32, 1, 48);
+    t.s(b" MHZ  MS PER FRAME");
+    log_text(&t);
+    log(b"SCENE           IN  DRAW   PAL   VGA  SND%  70HZ\r\n");
+    let k = BD_MHZ * 1000.0; // cycles per ms
+    let mut s = 0;
+    while s < BENCH_N {
+        t.clear();
+        let mut c = 0;
+        while c < 12 {
+            t.ch(SC_NAMES[s * 12 + c]);
+            c += 1;
+        }
+        let b = s * BD_K;
+        let fr = BD[b + BD_FR];
+        if fr > 0.0 {
+            field(&mut t, BD[b + BD_IN] / fr / k);
+            field(&mut t, BD[b + BD_DRAW] / fr / k);
+            field(&mut t, BD[b + BD_PAL] / fr / k);
+            field(&mut t, BD[b + BD_VGA] / fr / k);
+            field(&mut t, BD[b + BD_SND] * 100.0 / BD[b + BD_ALL]);
+            field(&mut t, fr * 1000.0 / BD[b + BD_QMS]);
+        } else {
+            t.s(b"     -     -     -     -     -     -");
+        }
+        log_text(&t);
+        s += 1;
+    }
+    log(b"IN: audio data and FFT, DRAW: Rust renderer, PAL: palette and\r\n");
+    log(b"conversion, VGA: copy to video memory (interrupts included in all four),\r\n");
+    log(b"SND%: time in the sound interrupt, 70HZ: frames per second when waiting\r\n");
+    log(b"for the vertical retrace as in normal play.\r\n");
+}
+
+/// Appends `v` with one decimal, right-aligned in 6 characters.
+fn field(t: &mut TextBuf, v: f64) {
+    let mut f = TextBuf::new();
+    f.dec1(v);
+    let mut n = f.n;
+    while n < 6 {
+        t.ch(32);
+        n += 1;
+    }
+    let mut i = 0;
+    while i < f.n {
+        t.ch(f.b[i]);
+        i += 1;
+    }
+}
+
+/// Appends a line of text plus CR LF to the messages.
+fn log_text(t: &TextBuf) {
+    let mut i = 0;
+    while i < t.n {
+        log_byte(t.b[i] as u32);
+        i += 1;
+    }
+    log_byte(13);
+    log_byte(10);
 }
 
 /// A scan code from the keyboard controller, or -1.
@@ -1243,6 +1432,10 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
     let view = view % 16;
     unsafe {
         BASE = 0;
+        HAS_TSC = rt_has_tsc() != 0;
+        LOG_P = (&raw const SELFTEST_LOG) as u32;
+        LOG_LEN = 4096;
+        LOG_N = 0;
         SB.sixteen = !pro;
         SB.rate = if pro {
             1_000_000 / (1_000_000 / 22050)
@@ -1283,14 +1476,17 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
             while (N_IRQ as f64) * BLOCK as f64 * 1000.0 / SB.rate as f64 <= now {
                 rust_sb_irq_selftest();
             }
+            let c1 = tsc();
             if PEND_READY != 0 {
                 commit_pending();
             }
+            let c2 = tsc();
             if view == 7 && f % (fps * 4) == fps * 4 - 1 && views < 6 {
                 vis_key(118);
                 views += 1;
             }
             let fb = vis_frame(now, SW, SH, 0.5) as usize;
+            let c3 = tsc();
             if f == 0 {
                 vis_set_fine(0);
             }
@@ -1298,7 +1494,28 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
                 update_palette(fb);
             }
             convert_frame(fb);
+            let c4 = tsc();
+            // simulated time: the clock rate in the details is meaningless here
+            bench_detail(
+                c2 - c1,
+                c3 - c2,
+                c4 - c3,
+                0.0,
+                c4 - c1,
+                0.0,
+                1000.0 / fps as f64,
+                now,
+            );
             f += 1;
+        }
+        if view == 9 && vis_bench_len() > 0 {
+            let p = vis_bench_text() as usize;
+            let mut i = 0;
+            while i < vis_bench_len() as usize {
+                log_byte(*((p + i) as *const u8) as u32);
+                i += 1;
+            }
+            log_details();
         }
         let mut i = 0;
         while i < 64000 {
@@ -1315,6 +1532,19 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
             i += 1;
         }
         MIXED
+    }
+}
+
+static mut SELFTEST_LOG: [u8; 4096] = [0; 4096];
+
+/// The messages of the last self-test (dos/selftest.asm prints them).
+///
+/// Returns the address of the text; its length goes to `len`.
+#[no_mangle]
+pub extern "C" fn rust_selftest_log(len: *mut u32) -> u32 {
+    unsafe {
+        *len = LOG_N;
+        (&raw const SELFTEST_LOG) as u32
     }
 }
 

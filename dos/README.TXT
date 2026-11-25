@@ -10,7 +10,8 @@ Options:  /M   add the Mandelbrot zoom
           /W   add the cube
           /V   add the voxel landscape (3D Mandelbrot)
           /B   benchmark: every view for 15 s, then a table of frames per
-               second on the screen and in BENCH.TXT
+               second on the screen and in BENCH.TXT; on a Pentium BENCH.TXT
+               and the messages after Esc also show where the time goes
           /?   help
           These views are too demanding for a Pentium 133 (Mandelbrot and
           voxel take several seconds per frame), so they are left out unless

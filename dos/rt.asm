@@ -1,10 +1,11 @@
 ; Runtime functions for the Rust code of the DOS build (no C library): memory functions that
-; the compiler calls, and volatile 32-bit access for data shared with the interrupt handler.
+; the compiler calls, volatile 32-bit access for data shared with the interrupt handler, and
+; the Pentium's time stamp counter for the benchmark.
 ; cdecl; eax, ecx, edx may be changed, ebx, esi, edi, ebp are preserved.
 bits 32
 section .text
 
-global memcpy, memmove, memset, memcmp, bcmp, peek32, poke32
+global memcpy, memmove, memset, memcmp, bcmp, peek32, poke32, rt_has_tsc, rt_tsc
 
 memcpy:                         ; (dst, src, n) -> dst
     push esi
@@ -92,4 +93,44 @@ poke32:                         ; (addr, value), always written to memory
     mov eax, [esp+4]
     mov edx, [esp+8]
     mov [eax], edx
+    ret
+
+rt_has_tsc:                     ; () -> 1 if the CPU has a time stamp counter (RDTSC), else 0
+    push ebx
+    pushfd                      ; CPUID exists if bit 21 of EFLAGS (ID) can be changed
+    pop eax
+    mov ecx, eax
+    xor eax, 200000h
+    push eax
+    popfd
+    pushfd
+    pop eax
+    push ecx
+    popfd
+    xor eax, ecx
+    test eax, 200000h
+    jz .no                      ; 386 and early 486: no CPUID, no TSC
+    xor eax, eax
+    cpuid
+    test eax, eax
+    jz .no
+    mov eax, 1
+    cpuid
+    xor eax, eax
+    test edx, 10h               ; feature bit 4: TSC
+    jz .done
+    inc eax
+    jmp .done
+.no:
+    xor eax, eax
+.done:
+    pop ebx
+    ret
+
+rt_tsc:                         ; () -> CPU clock cycles since reset, as a double (in st0)
+    rdtsc
+    push edx
+    push eax
+    fild qword [esp]
+    add esp, 8
     ret

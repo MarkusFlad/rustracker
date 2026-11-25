@@ -436,6 +436,16 @@ pub extern "C" fn vis_bench_tick(now: f64, cost: f64) -> i32 {
     v.bench_tick(now)
 }
 
+/// The scene whose frames the benchmark is measuring right now, for pages that measure
+/// details of their own (the DOS edition).
+///
+/// # Returns
+/// The scene index (0..8), or -1 when not running or during the first frame of a scene.
+#[no_mangle]
+pub extern "C" fn vis_bench_measuring() -> i32 {
+    vis().bench_measuring()
+}
+
 /// The scene to draw while the benchmark runs.
 ///
 /// # Returns

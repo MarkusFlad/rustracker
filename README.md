@@ -273,6 +273,14 @@ Starten:
 - DOS: `RTRACK /B`. Die Tabelle steht danach auch in `BENCH.TXT`; `SET RTRACK=B3` läuft mit 3 Sekunden
   pro Szene und beendet sich danach (für automatische Tests).
 
+Unter DOS folgt eine zweite Tabelle, wenn die CPU einen Zeitstempelzähler hat (ab Pentium,
+Befehl `RDTSC`). Sie teilt jedes Bild in Takten auf: Audiodaten und FFT (**IN**), der
+Rust-Renderer (**DRAW**), Palette und Umrechnung (**PAL**), Kopieren in den VGA-Speicher
+(**VGA**), dazu der Anteil des Sound-Interrupts (**SND%**) und die Bildrate, die beim normalen
+Abspielen mit Warten auf den Strahlrücklauf herauskäme (**70HZ**). Die Taktfrequenz misst das
+Programm selbst über die Abspielzeit des Sound Blasters. Diese Tabelle steht in den Meldungen
+nach dem Beenden und in `BENCH.TXT`, nicht auf dem Bildschirm.
+
 Im Browser begrenzt `requestAnimationFrame` die Bildrate auf die des Bildschirms (meist 60 Hz);
 dort ist **MS** die aussagekräftigere Spalte. Die klassische Edition zeichnet Würfel (CSS 3D) und
 Mandelbrot-Zoom (WebGL) zum Teil auf der GPU, deren Arbeit in MS nicht enthalten ist. Unter DOS

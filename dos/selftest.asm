@@ -1,10 +1,11 @@
 ; Linux (i386) test harness for the DOS build: runs rust_selftest without hardware.
-;   selftest SONG.MOD OUT.RAW SECONDS VIEW   (VIEW 0..6, 7 for all in turn, 8 spectrum 3D;
-;   plus 16 * n for n frames per second instead of 70)
-; OUT.RAW receives the last frame as 64000 palette indices and the palette (768 bytes).
+;   selftest SONG.MOD OUT.RAW SECONDS VIEW   (VIEW 0..6, 7 for all in turn, 8 spectrum 3D,
+;   9 benchmark; plus 16 * n for n frames per second instead of 70)
+; OUT.RAW receives the last frame as 64000 palette indices and the palette (768 bytes); the
+; messages (e.g. the benchmark tables) go to standard output.
 ; Port access is a no-op here; the interrupt is simulated inside rust_selftest.
 bits 32
-extern rust_selftest
+extern rust_selftest, rust_selftest_log
 global _start, inb, outb, irq_enable, irq_disable
 
 section .text
@@ -57,6 +58,14 @@ parse:                          ; esi = decimal string -> ecx
 
 written:
     mov [result], eax
+    push log_len                ; the messages to standard output
+    call rust_selftest_log
+    add esp, 4
+    mov ecx, eax
+    mov eax, 4                  ; write(1, log, len)
+    mov ebx, 1
+    mov edx, [log_len]
+    int 0x80
     mov eax, 8                  ; creat(out, 0644)
     mov ebx, [ebp+12]
     mov ecx, 420
@@ -92,3 +101,4 @@ out:        resb 64768
 song_len:   resd 1
 result:     resd 1
 view:       resd 1
+log_len:    resd 1

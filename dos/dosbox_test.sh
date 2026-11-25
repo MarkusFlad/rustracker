@@ -11,8 +11,10 @@ CORE=${1:-dynamic}
 SECS=${2:-8}
 NAME=${3:-dosbox}
 MODE=${4:-play}
+CPUTYPE=auto
 if [ "$MODE" = bench ]; then
     OPT=B$SECS
+    CPUTYPE=pentium_slow            # with time stamp counter: details per stage
     LIMIT=$((SECS * 8 * 3 + 180))   # 8 scenes, plus the slow first frames of lake and zoom
 else
     OPT=T$SECS
@@ -27,6 +29,7 @@ machine=svga_s3
 memsize=32
 [cpu]
 core=$CORE
+cputype=$CPUTYPE
 cycles=max
 [mixer]
 rate=44100

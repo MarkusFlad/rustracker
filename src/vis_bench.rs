@@ -24,7 +24,7 @@ const SC_VIEW: [u32; BENCH_N] = [
 /// Spectrum in 3D for each scene.
 const SC_3D: [bool; BENCH_N] = [false, false, true, false, false, false, false, false];
 /// Names, 12 characters each (the core-language subset copies no arrays of arrays).
-const SC_NAMES: &[u8; 12 * BENCH_N] =
+pub(crate) const SC_NAMES: &[u8; 12 * BENCH_N] =
     b"OSCILLOSCOPESPECTRUM 2D SPECTRUM 3D MANDELBROT  CUBE        VOXEL       LAKE        DEMO SCENE  ";
 /// Measuring time per scene in seconds when started with the B key.
 pub(crate) const BENCH_SECS: f64 = 15.0;
@@ -84,6 +84,18 @@ impl Vis {
     /// 0 off, 1 running, 2 finished (result shown).
     pub fn bench_state(&self) -> u32 {
         self.bn_state
+    }
+
+    /// The scene whose frames are being measured right now (not its first frame).
+    ///
+    /// # Returns
+    /// The scene index, or -1 (not running, or the first frame of a scene).
+    pub fn bench_measuring(&self) -> i32 {
+        if self.bn_state == BN_RUN && self.bn_n >= 2 {
+            self.bn_scene as i32
+        } else {
+            -1
+        }
     }
 
     /// The render time of the last frame, measured by the page (counts for "MS").
