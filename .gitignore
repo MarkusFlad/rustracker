@@ -1,3 +1,11 @@
 /target
+/preview/out
+# built by the CI (and by build.sh locally), not committed
 **/*.wasm
 **/*.wav
+# copy of www/rustvis.js (build.sh / CI)
+/www-fb/rustvis.js
+# third-party modules: keep them local, the rights stay with their authors
+/www/12th_warrior.mod
+# DOS build output (dos/build.sh)
+/dos/out

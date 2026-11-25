@@ -56,6 +56,8 @@
   #orders button.on { background: var(--ph); color: #001a0b; }
   #samples { margin: 0; padding: 8px 10px; white-space: pre; overflow-x: auto; font-size: 12px; color: var(--muted); }
   #msg { padding: 6px 12px; color: var(--amber); min-height: 1.4em; }
+  #benchOut { margin: 0 12px 8px; padding: 10px 12px; border: 1px solid var(--line); background: var(--panel);
+    color: var(--ph); white-space: pre; overflow-x: auto; font-size: 12px; }
   .vh { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
   .drop { outline: 2px dashed var(--ph); outline-offset: -6px; }
 </style>
@@ -69,10 +71,12 @@
   <input id="file" type="file" class="vh" tabindex="-1">
   <span class="grow"></span>
   <button id="view" type="button">View: Oscilloscope</button>
+  <button id="bench" type="button" title="Every view for 15 s, then a table with frames per second">Benchmark</button>
   <label class="ctl"><input id="loop" type="checkbox"> Loop</label>
   <label class="ctl">Stereo <input id="sep" type="range" min="0" max="100" value="60"></label>
 </header>
 <div id="msg">Loading WASM …</div>
+<pre id="benchOut" hidden></pre>
 <main>
   <section>
     <div class="box" id="viewBoxOuter">
@@ -283,7 +287,7 @@ function onWorkletMessage(e) {
     if (timeline.length > 64) timeline.shift();
     dir.peak = Math.max(m.rms, dir.peak * 0.9995, 0.02);
     dir.inten += (Math.min(1, m.rms / dir.peak) - dir.inten) * 0.04;
-    if (m.ended) { playing = false; updateButtons(); $('msg').textContent = 'End of song.'; }
+    if (m.ended) { playing = false; updateButtons(); $('msg').textContent = 'End of song.'; if (rust) rust.vi.vis_event(1); }
   } else if (m.type === 'error') {
     $('msg').textContent = 'Worklet error: ' + m.message;
   }
@@ -424,12 +428,81 @@ function oscLayout(W, H, n) {
 /** Animation loop: draws the selected view every frame. */
 function draw() {
   requestAnimationFrame(draw);
+  const t0 = performance.now();
+  if (bench) benchStep(t0);
   if (viewMode === 'mandel') drawMandel();
   else if (viewMode === 'spectrum') drawSpectrum();
   else if (viewMode === 'cube') drawCube();
   else if (viewMode in RUST_VIEW) drawRust();
   else drawOscilloscope();
+  if (bench) bench.cost = performance.now() - t0;
 }
+
+// ------------------------------------------------------------------ benchmark
+// The bookkeeping (scenes, timing, the table) is the Rust one of all editions (src/vis_bench.rs);
+// this page switches its own views as Rust asks and reports the time it spent drawing each frame
+// (main thread only: work of the GPU, e.g. for the cube and the Mandelbrot zoom, is not in "MS").
+let bench = null;
+/** View names by Rust view number (see vis_view). */
+const RUST_VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel', 'lake', 'demo'];
+
+/** Starts the benchmark: every scene for `secs` seconds, the song from the beginning. */
+async function startBench(secs) {
+  await initRust();
+  if (!rust) return;
+  await ensureAudio();
+  if (node.pendingSong !== false) await sendSong();
+  await ctx.resume();
+  node.port.postMessage({ type: 'seek', order: 0 });
+  last = null; timeline.length = 0; dir.order = -1; dir.z = 0;
+  rust.vi.vis_event(2);
+  playing = true;
+  node.port.postMessage({ type: 'play', on: true });
+  updateButtons();
+  bench = { saved: viewMode, saved3d: spec.mode3d, cost: 0, view: -1 };
+  rust.vi.vis_bench_start(secs);
+  $('benchOut').hidden = true;
+  $('bench').textContent = 'Stop benchmark';
+}
+
+/** Shows the 3D (true) or 2D spectrum. */
+function setSpec3d(on) {
+  if (spec.mode3d !== on) $('s3d').click();
+}
+
+/** Ends the benchmark (finished or cancelled) and brings the view from before back. */
+function endBench() {
+  const b = bench;
+  bench = null;
+  if (rust.vi.vis_bench_state() === 1) rust.vi.vis_bench_stop();
+  $('bench').textContent = 'Benchmark';
+  $('msg').textContent = 'Benchmark ' + (rust.vi.vis_bench_state() === 2 ? 'finished.' : 'cancelled.');
+  setSpec3d(b.saved3d);
+  setView(b.saved);
+  if (rust.vi.vis_bench_state() === 2) {
+    const t = rust.benchText() + '\n' + navigator.userAgent;
+    $('benchOut').textContent = t;
+    $('benchOut').hidden = false;
+    rust.vi.vis_bench_stop();
+    console.log(t);
+  }
+}
+
+/** One frame of the benchmark: the frame before has finished; switches to Rust's scene. */
+function benchStep(now) {
+  const vi = rust.vi;
+  vi.vis_set_playing(playing ? 1 : 0);
+  const sc = vi.vis_bench_tick(now, bench.cost);
+  if (sc < 0) { endBench(); return; }
+  const code = vi.vis_bench_view();
+  if (code !== bench.view) {
+    bench.view = code;
+    $('msg').textContent = `Benchmark: scene ${sc + 1} of 8 …`;
+    setSpec3d(code >= 16);
+    setView(RUST_VIEWS[code & 15]);
+  }
+}
+$('bench').onclick = () => (bench ? endBench() : startBench(15));
 
 /** The oscilloscope view with phosphor persistence. */
 function drawOscilloscope() {
@@ -605,7 +678,7 @@ function drawRust() {
   if (last && playing) showPosition(last);
 }
 
-const VIEWS = ['oscilloscope', 'mandel', 'spectrum', 'cube', 'voxel', 'lake', 'demo'];
+const VIEWS = ['oscilloscope', 'spectrum', 'mandel', 'cube', 'voxel', 'lake', 'demo'];
 const VIEW_NAME = { oscilloscope: 'Oscilloscope', mandel: 'Mandelbrot', spectrum: 'Spectrum', cube: 'Cube', voxel: 'Voxel', lake: 'Lake', demo: 'Demo scene' };
 const VIEW_TITLE = { oscilloscope: 'Oscilloscope · Master L/R · XY · Channels', mandel: 'Mandelbrot zoom to the beat of the music',
   spectrum: 'Spectrum · FFT (Rust, 4096 points, Hann window) · Spectrogram',
@@ -1172,6 +1245,14 @@ document.addEventListener('drop', async (e) => {
   }
   $('play').disabled = $('stop').disabled = false;
   draw();
+  // ?bench or ?bench=SECONDS: start the benchmark with the first click or key (audio needs a gesture)
+  const bq = new URLSearchParams(location.search).get('bench');
+  if (bq !== null) {
+    $('msg').textContent = 'Click or press a key to start the benchmark.';
+    const go = (e) => { e.stopPropagation(); e.preventDefault(); removeEventListener('pointerdown', go, true); removeEventListener('keydown', go, true);
+      startBench(Math.max(1, +bq || 15)); };
+    addEventListener('pointerdown', go, true); addEventListener('keydown', go, true);
+  }
 })();
 </script>
 </body>

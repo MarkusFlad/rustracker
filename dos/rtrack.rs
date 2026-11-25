@@ -38,6 +38,8 @@ mod vis_mandel;
 mod vis_osc;
 #[path = "../src/vis_spec.rs"]
 mod vis_spec;
+#[path = "../src/vis_bench.rs"]
+mod vis_bench;
 #[path = "../src/vis_ui.rs"]
 mod vis_ui;
 #[path = "../src/vis_voxel.rs"]

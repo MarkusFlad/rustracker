@@ -23,8 +23,8 @@ Die Oberfläche ist in allen Editionen englisch beschriftet.
 
 | | |
 |---|---|
-| ![Oszilloskop](docs/screenshots/oszilloskop.jpg)<br>**Oszilloskop**: Master L/R, XY-Figur und eine Spur pro Kanal | ![Mandelbrot-Zoom](docs/screenshots/mandelbrot.jpg)<br>**Mandelbrot-Zoom** im Takt der Musik |
-| ![Spektrum 2D](docs/screenshots/spektrum-2d.jpg)<br>**Spektrum 2D**: FFT-Balken mit Spitzenwerten und Spektrogramm | ![Spektrum 3D](docs/screenshots/spektrum-3d.jpg)<br>**Spektrum 3D**: die letzten 4 Sekunden in die Tiefe |
+| ![Oszilloskop](docs/screenshots/oszilloskop.jpg)<br>**Oszilloskop**: Master L/R, XY-Figur und eine Spur pro Kanal | ![Spektrum 2D](docs/screenshots/spektrum-2d.jpg)<br>**Spektrum 2D**: FFT-Balken mit Spitzenwerten und Spektrogramm |
+| ![Spektrum 3D](docs/screenshots/spektrum-3d.jpg)<br>**Spektrum 3D**: die letzten 4 Sekunden in die Tiefe | ![Mandelbrot-Zoom](docs/screenshots/mandelbrot.jpg)<br>**Mandelbrot-Zoom** im Takt der Musik |
 | ![Würfel](docs/screenshots/wuerfel.jpg)<br>**Würfel** mit sechs Live-Flächen | ![Voxel-Landschaft](docs/screenshots/voxel.jpg)<br>**Voxel-Landschaft** aus dem Mandelbrot-Zoom |
 | ![See aus Voxeln](docs/screenshots/see.jpg)<br>**See aus Voxeln**: Bass und Takt erzeugen Wellen | ![Demoszene](docs/screenshots/demo.jpg)<br>**Demoszene**: Copper-Bars, Plasma, Rotozoomer, Rasterzeilen, Sinus-Scroller |
 | ![Framebuffer-Edition](docs/screenshots/framebuffer.jpg)<br>**Framebuffer-Edition**: jedes Pixel in Rust gezeichnet | |
@@ -110,22 +110,9 @@ Unterstützt werden 15/31-Sample-MODs mit 4 bis 32 Kanälen (M.K., FLT4/8, xCHN,
 und die ProTracker-Effekte 0–F. Dazu gehören auch die E-Befehle: Fine Slides, Loop,
 Retrigger, Note Cut/Delay und Pattern Delay.
 
-## Mandelbrot-Ansicht
-
-Über **View** wechselst du vom Oszilloskop zum Mandelbrot-Zoom. Das Timing kommt direkt
-aus dem Replayer: Position, Zeile, Speed und BPM. Ein Schlag sind 4 Zeilen, ein Takt 16 Zeilen.
-
-- Jede Order-Position startet eine neue Fahrt zu einem anderen Ort im Apfelmännchen, mit einem Lichtblitz auf der Eins.
-- Jeder Schlag gibt einen Zoom-Schub. Je lauter die Musik, desto schneller geht es hinein.
-- Der Bildmittelpunkt wandert pro Schlag eine Vierteldrehung im Kreis, und pro Takt schwingt das Bild nach links oder rechts.
-- Jede gespielte Note verschiebt die Farbpalette.
-
-Die Anzeige läuft um die Audio-Ausgabelatenz verzögert, damit Bild und Ton zusammenpassen.
-Doppelklick oder **Fullscreen** füllt den Bildschirm.
-
 ## Spektrum-Ansicht
 
-Die dritte Ansicht zeigt das Frequenzspektrum der Musik. Die API (`src/api.rs`) hält dafür die
+Über **View** wechselst du vom Oszilloskop zum Frequenzspektrum der Musik. Die API (`src/api.rs`) hält dafür die
 letzten 4096 Samples des Mixes (Mono) in einem Ringpuffer. `mp_spectrum(4096)` berechnet daraus
 mit einer eigenen FFT (Radix-2, Cooley-Tukey, Hann-Fenster) das Leistungsspektrum. Das geschieht
 alle 1024 Samples, also mit 75 % Überlappung. Die FFT kommt ohne `core`-Mathematik aus: Sinus und
@@ -142,6 +129,19 @@ Spektrum, dahinter liegen die Spektren der letzten 4 Sekunden. Sie rücken persp
 hinten, werden kleiner und blasser und verdecken einander (Maleralgorithmus). Was älter als
 4 Sekunden ist, wird nicht mehr gezeichnet. In lauten Passagen färben sich die Linien von Grün
 nach Bernstein.
+
+## Mandelbrot-Ansicht
+
+Nach dem Spektrum folgt der Mandelbrot-Zoom. Das Timing kommt direkt
+aus dem Replayer: Position, Zeile, Speed und BPM. Ein Schlag sind 4 Zeilen, ein Takt 16 Zeilen.
+
+- Jede Order-Position startet eine neue Fahrt zu einem anderen Ort im Apfelmännchen, mit einem Lichtblitz auf der Eins.
+- Jeder Schlag gibt einen Zoom-Schub. Je lauter die Musik, desto schneller geht es hinein.
+- Der Bildmittelpunkt wandert pro Schlag eine Vierteldrehung im Kreis, und pro Takt schwingt das Bild nach links oder rechts.
+- Jede gespielte Note verschiebt die Farbpalette.
+
+Die Anzeige läuft um die Audio-Ausgabelatenz verzögert, damit Bild und Ton zusammenpassen.
+Doppelklick oder **Fullscreen** füllt den Bildschirm.
 
 ## Songs
 
@@ -241,6 +241,47 @@ die Szene. Plasma und Rotozoomer rechnen in den inneren Schleifen nur mit ganzen
 Tabellen und laufen deshalb auch in der DOS-Edition flott. Die Ansicht steckt in
 `src/vis_demo.rs` und wird in allen Editionen von Rust gezeichnet.
 
+## Benchmark
+
+Alle Editionen haben einen Benchmark: Er zeigt jede Szene (Oszilloskop, Spektrum 2D und 3D,
+Mandelbrot, Würfel, Voxel, See, Demoszene) 15 Sekunden lang, mit dem Song von Anfang an, und
+zeigt danach eine Tabelle:
+
+```
+RUSTRACKER BENCHMARK  15 S PER SCENE  1265 X 791
+SCENE          FPS   MIN      MS    1ST  PIC/S
+OSCILLOSCOPE  60.0  59.9     3.2     17      -
+MANDELBROT    52.4  51.4    17.2     28   19.5
+…
+SCORE (GEOMETRIC MEAN OF FPS) 58.5
+```
+
+| Spalte | Bedeutung |
+|---|---|
+| FPS | Bilder pro Sekunde im Mittel (ohne das erste Bild) |
+| MIN | die langsamste volle Sekunde |
+| MS | Rechenzeit pro Bild in ms: im Browser die gemessene Zeit im Haupt-Thread, unter DOS die Zeit von Bild zu Bild |
+| 1ST | Dauer des ersten Bilds in ms, mit dem Aufbau der Ansicht (der See baut seine Landschaft, der Zoom sein erstes Bild) |
+| PIC/S | fertige Mandelbrot-Bilder pro Sekunde (Zoom, Würfel, Voxel); das Bild passt seine Auflösung an |
+| SCORE | geometrisches Mittel der FPS, damit eine schnelle Szene keine langsame überdeckt |
+
+Starten:
+- Framebuffer-Edition und DOS: Taste **B** (noch einmal B bricht ab, jede Taste schließt die Tabelle).
+- Klassische Edition: Knopf **Benchmark**; die Tabelle erscheint unter der Kopfzeile.
+- Im Browser startet `?bench` bzw. `?bench=SEKUNDEN` in der Adresse den Benchmark mit dem ersten Klick
+  (Audio braucht eine Geste), z. B. [fb/?bench](https://markusflad.github.io/rustracker/fb/?bench).
+- DOS: `RTRACK /B`. Die Tabelle steht danach auch in `BENCH.TXT`; `SET RTRACK=B3` läuft mit 3 Sekunden
+  pro Szene und beendet sich danach (für automatische Tests).
+
+Im Browser begrenzt `requestAnimationFrame` die Bildrate auf die des Bildschirms (meist 60 Hz);
+dort ist **MS** die aussagekräftigere Spalte. Die klassische Edition zeichnet Würfel (CSS 3D) und
+Mandelbrot-Zoom (WebGL) zum Teil auf der GPU, deren Arbeit in MS nicht enthalten ist. Unter DOS
+wartet der Benchmark nicht auf den Strahlrücklauf, sonst wäre bei 70 Bildern pro Sekunde Schluss.
+
+Die Abläufe und die Tabelle stehen in `src/vis_bench.rs` und sind für alle Editionen dieselben:
+In der Framebuffer- und der DOS-Edition schaltet Rust die Szenen selbst um, die klassische
+Edition fragt Rust nach der Szene (`vis_bench_tick`, `vis_bench_view`) und zeichnet sie selbst.
+
 ## Continuous Integration
 
 `.github/workflows/ci.yml` läuft bei jedem Push und Pull Request:
@@ -251,7 +292,7 @@ Tabellen und laufen deshalb auch in der DOS-Edition flott. Die Ansicht steckt in
 | **WebAssembly** | Build mit `cargo` für `wasm32-unknown-unknown` **und** über `preview/minicore.rs`. Der zweite Build stellt sicher, dass die Bibliothek weiterhin nur den Sprachkern nutzt. Dazu kommt der Mandelbrot-SIMD-Kern (`mandel.wasm`). Danach laufen in Node `tests/wasm_smoke.mjs` (Exporte, Laden, Klang, FFT, Vergleich mit dem nativen Rendern auf ±2 LSB) und `tests/vis_smoke.mjs` (Framebuffer-Renderer, mit und ohne SIMD-Kern). Zum Schluss werden die Skripte beider Seiten geprüft und die Website als Artefakt `site` gebaut. |
 | **Songs** | Erzeugt die beiden eigenen Songs neu aus `songs/*.py` und prüft, dass der Rust-Player sie abspielt |
 | **Video** | Nicht bei Pull Requests: rendert das Promo-Video mit `tools/promo/make_video.sh` (siehe unten) und stellt es als Artefakt `video` bereit |
-| **DOS** | Baut die DOS-Edition (`dos/build.sh`), lässt sie im Linux-Testrahmen ohne Hardware durch alle Ansichten laufen (`dos/selftest_check.py`), spielt sie in DOSBox mit Sound Blaster 16 ab (`dos/dosbox_test.sh`: 8 s mit dynamischem, 30 s mit normalem CPU-Kern, mit Screenshots; noch nicht blockierend) und packt ZIP, Seite und Bilder als Artefakt `dos` |
+| **DOS** | Baut die DOS-Edition (`dos/build.sh`), lässt sie im Linux-Testrahmen ohne Hardware durch alle Ansichten laufen (`dos/selftest_check.py`), spielt sie in DOSBox mit Sound Blaster 16 ab (`dos/dosbox_test.sh`: 8 s mit dynamischem, 30 s mit normalem CPU-Kern, mit Screenshots, dazu ein Benchmark mit 3 s pro Szene; noch nicht blockierend) und packt ZIP, Seite und Bilder als Artefakt `dos` |
 | **Pages** | Nur bei Push auf den Standard-Branch (`main` oder `master`): veröffentlicht beide Editionen mit „Neon Techno“ auf GitHub Pages (klassisch unter `/`, Framebuffer unter `/fb/`), das Promo-Video unter `/video/` und die DOS-Edition unter `/dos/` |
 
 Für GitHub Pages musst du einmalig unter *Settings → Pages → Source* „GitHub Actions“ wählen.
@@ -295,7 +336,8 @@ python3 dos/selftest_check.py www/drozerix_-_neon_techno.mod /tmp/dos   # alle A
 dos/package.sh /tmp/dos-site                            # ZIP und Seite
 ```
 
-Auf dem PC: `RTRACK [/M] [/W] [/V] [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet).
+Auf dem PC: `RTRACK [/M] [/W] [/V] [/B] [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet).
+`/B` startet den [Benchmark](#benchmark).
 Mandelbrot-Zoom (`/M`), Würfel (`/W`) und Voxel-Landschaft (`/V`) sind für einen Pentium 133 zu
 aufwendig und deshalb nur auf Wunsch dabei. Nötig sind
 16 MB RAM (das Programm belegt etwa 10 MB), die Variable `BLASTER` und DOS im Real Mode:
@@ -354,12 +396,13 @@ Das JavaScript (`www-fb/index.html` und die mit der klassischen Edition geteilte
 | `src/vis_lake.rs` | See aus Voxeln: Wellengleichung, angeregt von Bass und Takt |
 | `src/voxel_space.rs` | wiederverwendbarer Voxel-Space-Renderer für Höhenkarten (Kamera-Orbit, Strahlen pro Spalte, Dunst) |
 | `src/vis_ui.rs` | Knopfleiste, Eingabe, Seitenleiste mit Order-Liste und Pattern |
+| `src/vis_bench.rs` | Benchmark: Szenen, Messung, Ergebnistabelle (für alle Editionen) |
 | `src/gfx.rs` | Framebuffer-Primitive: Rechtecke, Linien mit Glow, Text |
 | `src/font.rs` | eigener 5×7-Bitmap-Font (erzeugt von `tools/make_font.py`) |
 | `src/bin/fbshot.rs` | rendert Frames nativ als PPM-Bilder, zum Testen ohne Browser |
 | `src/bin/promo.rs` | rendert die Bilder des Promo-Videos nativ und gibt sie an ffmpeg (`tools/promo/`) |
 
-Tasten: Leertaste Play/Pause, S Stop, O Datei, V Ansicht, 3 Spektrum 2D/3D, P Farben, R Voxel grob/fein, L Loop, F Vollbild.
+Tasten: Leertaste Play/Pause, S Stop, O Datei, V Ansicht, 3 Spektrum 2D/3D, P Farben, R Voxel grob/fein, L Loop, F Vollbild, B Benchmark.
 
 Wie alles andere bleibt auch der Renderer im Sprachkern-Subset und baut deshalb auch über
 `preview/minicore.rs`. `tests/vis_smoke.mjs` prüft ihn in Node (alle Ansichten, Knöpfe, Zeit pro Frame).

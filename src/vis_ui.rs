@@ -5,6 +5,7 @@ use crate::gfx::*;
 use crate::math::{imax, imin};
 use crate::replayer::Player;
 use crate::vis::*;
+use crate::vis_bench::*;
 
 impl Vis {
     // ------------------------------------------------------------------ input
@@ -19,6 +20,13 @@ impl Vis {
     /// The action for JS: one of the `ACT_*` constants (argument in [`Vis::action_arg`]);
     /// `ACT_NONE` if nothing is to be done.
     pub fn pointer(&mut self, x: i32, y: i32) -> i32 {
+        if self.bn_state != BN_OFF {
+            // a click closes the benchmark result; while it runs, clicks are ignored
+            if self.bn_state == BN_DONE {
+                self.bench_stop();
+            }
+            return ACT_NONE;
+        }
         let i = self.button_at(x, y);
         if i >= 0 {
             return self.button(self.btn_id[i as usize]);
@@ -102,7 +110,8 @@ impl Vis {
     }
 
     /// A key press: space play/pause, s stop, o open, v view, 3 2D/3D, p palette, l loop,
-    /// f fullscreen, r voxel resolution (upper or lower case).
+    /// f fullscreen, r voxel resolution, b benchmark (upper or lower case). While the
+    /// benchmark runs only b (cancel) works; its result closes with any key.
     ///
     /// # Arguments
     /// * `code` - character code of the key
@@ -111,6 +120,21 @@ impl Vis {
     /// The action for JS: one of the `ACT_*` constants (argument in [`Vis::action_arg`]);
     /// `ACT_NONE` if nothing is to be done.
     pub fn key(&mut self, code: u32) -> i32 {
+        if self.bn_state == BN_DONE {
+            self.bench_stop(); // any key closes the result
+            return ACT_NONE;
+        }
+        if code == 66 || code == 98 {
+            if self.bn_state == BN_RUN {
+                self.bench_stop();
+                return ACT_NONE;
+            }
+            self.bench_start(BENCH_SECS);
+            return ACT_BENCH;
+        }
+        if self.bn_state == BN_RUN {
+            return ACT_NONE; // the benchmark chooses the views
+        }
         if code == 32 {
             return ACT_PLAY;
         }

@@ -242,6 +242,7 @@ rm_back:
     int 21h
     jmp .log
 .logged:
+    call write_bench
     mov eax, [exit_code]
     cmp eax, 100h
     jb .done
@@ -294,6 +295,27 @@ fail:
     int 21h
     mov ax, 4C01h
     int 21h
+
+; ---- the benchmark table (part of the messages) also goes into BENCH.TXT
+write_bench:
+    mov cx, [bi_benchlen]
+    jcxz .no
+    mov dx, name_bench
+    push cx
+    xor cx, cx
+    mov ah, 3Ch                 ; create
+    int 21h
+    pop cx
+    jc .no
+    mov bx, ax
+    mov dx, logbuf
+    add dx, [bi_bench]
+    mov ah, 40h                 ; write
+    int 21h
+    mov ah, 3Eh                 ; close
+    int 21h
+.no:
+    ret
 
 free_all:
     cmp word [xms_h], 0
@@ -631,6 +653,7 @@ msg_err     db ', error code $'
 msg_crlf    db 13, 10, '$'
 name_bin    db 'RTRACK.BIN', 0
 name_mod    db 'NEON.MOD', 0
+name_bench  db 'BENCH.TXT', 0
 str_blaster db 'BLASTER='
 str_rtrack  db 'RTRACK='
 
@@ -665,6 +688,8 @@ bi_opt      dd 0
 bi_eip      dd 0
 bi_err      dd 0
 bi_cmd      dd 0
+bi_bench    dd 0                        ; written by the image: benchmark table in logbuf
+bi_benchlen dd 0
 
 xmove:                                  ; XMS move structure
 xm_len      dd 0

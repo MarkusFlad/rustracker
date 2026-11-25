@@ -65,6 +65,8 @@ pub const ACT_FULLSCREEN: i32 = 4;
 pub const ACT_SEEK: i32 = 5;
 /// Action: song loop on (arg 1) or off (arg 0).
 pub const ACT_LOOP: i32 = 7;
+/// Action: the benchmark has started; restart the song from the beginning and play it.
+pub const ACT_BENCH: i32 = 8;
 
 pub(crate) const B_PLAY: u32 = 1;
 pub(crate) const B_STOP: u32 = 2;
@@ -85,6 +87,8 @@ pub(crate) const V_LAKE: u32 = 5;
 pub(crate) const V_DEMO: u32 = 6;
 /// Number of views.
 pub(crate) const N_VIEWS: u32 = 7;
+/// The order in which the view button steps through the views.
+pub(crate) const VIEW_ORDER: [u32; 7] = [V_OSC, V_SPEC, V_MANDEL, V_CUBE, V_VOXEL, V_LAKE, V_DEMO];
 
 /// What the worklet reported with one slot: when it is heard and where the replayer was.
 pub(crate) struct Msg {
@@ -264,6 +268,31 @@ pub struct Vis {
     pub(crate) action_arg: i32,
     pub(crate) ready: bool,
     pub(crate) d_has_e: bool,
+    // benchmark (see vis_bench.rs)
+    pub(crate) bn_state: u32,
+    pub(crate) bn_secs: f64,
+    pub(crate) bn_scene: usize,
+    pub(crate) bn_n: u32,
+    pub(crate) bn_cost: f64,
+    pub(crate) bn_t0: f64,
+    pub(crate) bn_t1: f64,
+    pub(crate) bn_win_t: f64,
+    pub(crate) bn_win_n: u32,
+    pub(crate) bn_cost_sum: f64,
+    pub(crate) bn_cost_n: u32,
+    pub(crate) bn_worst: f64,
+    pub(crate) bn_mb0: u32,
+    pub(crate) bn_saved_view: u32,
+    pub(crate) bn_saved_3d: bool,
+    pub(crate) bn_w: i32,
+    pub(crate) bn_h: i32,
+    pub(crate) bn_fps: [f64; crate::vis_bench::BENCH_N],
+    pub(crate) bn_min: [f64; crate::vis_bench::BENCH_N],
+    pub(crate) bn_ms: [f64; crate::vis_bench::BENCH_N],
+    pub(crate) bn_first: [f64; crate::vis_bench::BENCH_N],
+    pub(crate) bn_pic: [f64; crate::vis_bench::BENCH_N],
+    pub(crate) bn_text: [u8; crate::vis_bench::BENCH_TEXT],
+    pub(crate) bn_len: usize,
     // voxel view: height map and lighting of the front Mandelbrot buffer
     pub(crate) mb_done: u32,
     pub(crate) vx_seen: u32,
@@ -407,6 +436,30 @@ impl Vis {
             action_arg: 0,
             ready: false,
             d_has_e: false,
+            bn_state: 0,
+            bn_secs: 0.0,
+            bn_scene: 0,
+            bn_n: 0,
+            bn_cost: 0.0,
+            bn_t0: 0.0,
+            bn_t1: 0.0,
+            bn_win_t: 0.0,
+            bn_win_n: 0,
+            bn_cost_sum: 0.0,
+            bn_cost_n: 0,
+            bn_worst: 0.0,
+            bn_mb0: 0,
+            bn_saved_view: 0,
+            bn_saved_3d: false,
+            bn_w: 0,
+            bn_h: 0,
+            bn_fps: [0.0; crate::vis_bench::BENCH_N],
+            bn_min: [0.0; crate::vis_bench::BENCH_N],
+            bn_ms: [0.0; crate::vis_bench::BENCH_N],
+            bn_first: [0.0; crate::vis_bench::BENCH_N],
+            bn_pic: [0.0; crate::vis_bench::BENCH_N],
+            bn_text: [0; crate::vis_bench::BENCH_TEXT],
+            bn_len: 0,
             mb_done: 0,
             vx_seen: 0,
             vx_ready: false,
@@ -695,13 +748,16 @@ impl Vis {
     /// # Returns
     /// Pointer to the RGBA pixels (`width()`·`height()` u32, rows without padding).
     pub fn frame(&mut self, now: f64, w: i32, h: i32, css: f64, pl: &Player) -> *const u32 {
+        self.bench_tick(now);
         let (s, dt, cur) = self.begin_frame(now, w, h, css);
         let bar_h = self.draw_bar(&s, 13 * self.fs); // the bar may wrap onto more rows
         let (view, panel) = self.layout(bar_h);
-        self.draw_view(&s.sub(view.x, view.y, view.w, view.h), now, dt, cur, pl);
+        let vs = s.sub(view.x, view.y, view.w, view.h);
+        self.draw_view(&vs, now, dt, cur, pl);
         if panel.w > 0 && panel.h > 0 {
             self.draw_panel(&s.sub(panel.x, panel.y, panel.w, panel.h), cur, pl);
         }
+        self.draw_bench(&vs, &s);
         (&raw const self.fb) as *const u32
     }
 
@@ -769,13 +825,21 @@ impl Vis {
         }
     }
 
-    /// The view after `v` among the enabled ones.
+    /// The view after `v` in [`VIEW_ORDER`] among the enabled ones.
     pub(crate) fn next_view(&self, v: u32) -> u32 {
-        let mut n = (v + 1) % N_VIEWS;
-        while self.view_off & (1 << n) != 0 {
-            n = (n + 1) % N_VIEWS;
+        let mut i = 0;
+        while i < N_VIEWS as usize && VIEW_ORDER[i] != v {
+            i += 1;
         }
-        n
+        let mut k = 1;
+        while k <= N_VIEWS as usize {
+            let n = VIEW_ORDER[(i + k) % N_VIEWS as usize];
+            if self.view_off & (1 << n) == 0 {
+                return n;
+            }
+            k += 1;
+        }
+        V_OSC
     }
 
     /// Clamps the frame size to the framebuffer.
@@ -920,7 +984,9 @@ mod tests {
     fn view_button_skips_disabled_views() {
         static mut V: Vis = Vis::new();
         let v = unsafe { &mut *(&raw mut V) };
-        assert_eq!(v.next_view(V_OSC), V_MANDEL);
+        assert_eq!(v.next_view(V_OSC), V_SPEC);
+        assert_eq!(v.next_view(V_SPEC), V_MANDEL);
+        assert_eq!(v.next_view(V_DEMO), V_OSC);
         v.set_views(0x6D); // without Mandelbrot (1) and voxel (4)
         let mut seen = [false; N_VIEWS as usize];
         let mut cur = V_OSC;

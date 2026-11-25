@@ -32,7 +32,8 @@
     clippy::too_many_arguments,
     clippy::needless_range_loop,
     clippy::excessive_precision,
-    clippy::new_without_default
+    clippy::new_without_default,
+    clippy::implicit_saturating_sub
 )]
 
 pub mod api;
@@ -43,6 +44,7 @@ pub mod math;
 pub mod replayer;
 pub mod spectrum;
 pub mod vis;
+mod vis_bench;
 mod vis_cube;
 mod vis_demo;
 mod vis_lake;

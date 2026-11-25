@@ -174,8 +174,10 @@ DOS  ──>  RTRACK.COM (Real Mode, 16 Bit)
 Die **Boot-Information** ist eine kleine Struktur im Lader, deren physische Adresse
 `RTRACK.BIN` beim Start in einem Register bekommt: Ladeadresse, Speichergröße, Adresse und
 Länge des Songs, Adresse des DMA-Puffers, Adressen der Werte von `BLASTER` und `RTRACK`, der
-Meldungspuffer, die Kommandozeile und zwei Felder, in die der Einstieg bei einer
-Prozessor-Ausnahme Adresse und Fehlercode schreibt.
+Meldungspuffer, die Kommandozeile, zwei Felder, in die der Einstieg bei einer
+Prozessor-Ausnahme Adresse und Fehlercode schreibt, und zwei Felder, in die das Programm nach
+einem Benchmark Lage und Länge der Ergebnistabelle im Meldungspuffer schreibt. Der Lader
+schreibt diesen Teil nach dem Zurückschalten zusätzlich in die Datei `BENCH.TXT`.
 
 ## Speicher und Adressen
 
@@ -312,6 +314,7 @@ RTRACK [options] [FILE.MOD]
   /M  add the Mandelbrot zoom (slow)
   /W  add the cube (slow)
   /V  add the voxel landscape (very slow)
+  /B  benchmark: every view for 15 s, then a table (also in BENCH.TXT)
   /?  this help
 ```
 
@@ -321,6 +324,15 @@ Ohne Option springt die Taste V deshalb über sie hinweg. Der Lader überspringt
 die mit `/` oder `-` beginnen, bei der Suche nach dem Songnamen; `RTRACK.BIN` liest die Optionen
 selbst aus der Kommandozeile im PSP und gibt dem Renderer mit `vis_set_views` die erlaubten
 Ansichten vor.
+
+`/B` (oder die Taste B) startet den Benchmark, den alle Editionen gemeinsam haben
+(`src/vis_bench.rs`, beschrieben in der [README](../README.md#benchmark)). Er nimmt alle
+Ansichten, auch die ohne Option, startet den Song von vorn und misst jede Ansicht 15 Sekunden
+lang. Die Zeit kommt wie immer aus der Abspielposition des Sound Blasters. Während er läuft,
+wartet die Hauptschleife nicht auf den Strahlrücklauf, sonst würde jede schnelle Ansicht
+70 Bilder pro Sekunde zeigen. Die Tabelle erscheint auf dem Bildschirm (jede Taste schließt sie,
+Esc beendet), beim Beenden in den Meldungen und in `BENCH.TXT`. `SET RTRACK=B3` misst 3 Sekunden
+pro Ansicht und beendet das Programm danach von selbst; so läuft er in der CI.
 
 ## Testen
 
@@ -346,7 +358,10 @@ Ansichten vor.
 * **DOSBox in der CI** (`dos/dosbox_test.sh`). Der vollständige Weg mit Lader, Protected Mode,
   Sound Blaster 16 und VGA: einmal 8 Sekunden mit dem schnellen, einmal 30 Sekunden mit dem
   genauen CPU-Kern, mit Screenshots und der Ausgabe von `RTRACK.COM`. Die Umgebungsvariable
-  `RTRACK=T8` lässt das Programm nach 8 Sekunden Wiedergabe von selbst enden.
+  `RTRACK=T8` lässt das Programm nach 8 Sekunden Wiedergabe von selbst enden. Ein dritter Lauf
+  macht mit `RTRACK=B3` den Benchmark; die Tabelle steht auf der DOS-Seite. Ihre Zahlen hängen
+  von der DOSBox-Einstellung `cycles` ab und taugen nur, um Verschlechterungen zu bemerken.
+  Der Testrahmen kann den Benchmark ebenfalls laufen lassen (Ansicht 9), mit simulierter Zeit.
 * **js-dos** (DOSBox im Browser) haben wir ausprobiert. Dessen Emulator stürzte in unseren Tests
   schon an der DOS-Eingabeaufforderung ab, unabhängig vom Rustracker. Die DOS-Seite zeigt
   deshalb die Bilder aus der CI.

@@ -41,7 +41,7 @@ const runJobs = () => {
 };
 
 const W = 1024, H = 640, nch = au.mp_num_channels(), n = Math.min(nch, 8), off = vi.vis_spec_offset();
-const views = [['oscilloscope', null], ['mandelbrot', 'v'], ['spectrum 2D', 'v'], ['spectrum 3D', '3'], ['cube', 'v'], ['voxel', 'v'], ['lake', 'v'], ['lake coarse', 'r'], ['demo scene', 'v']];
+const views = [['oscilloscope', null], ['spectrum 2D', 'v'], ['spectrum 3D', '3'], ['mandelbrot', 'v'], ['cube', 'v'], ['voxel', 'v'], ['lake', 'v'], ['lake coarse', 'r'], ['demo scene', 'v']];
 let t = 0, frameT = 0;
 for (const [name, key] of views) {
   if (key) vi.vis_key(key.charCodeAt(0));
@@ -80,6 +80,20 @@ check(vi.vis_width() === W && vi.vis_height() === H, 'frame has the requested si
 if (kernel) check(jobs > 10, `Mandelbrot pictures rendered by the SIMD kernel: ${jobs}`);
 check(vi.vis_pointer(10, 10) === 1, 'play button (top left) returns the play action');
 check(vi.vis_key(' '.charCodeAt(0)) === 1 && vi.vis_key('s'.charCodeAt(0)) === 2, 'keyboard actions');
+{ // benchmark: the B key starts it, Rust steps through the scenes inside vis_frame, then the table
+  check(vi.vis_key('b'.charCodeAt(0)) === 8 && vi.vis_bench_state() === 1, 'B key starts the benchmark');
+  vi.vis_bench_stop(); vi.vis_bench_start(1);
+  const seen = new Set();
+  for (let i = 0; i < 2000 && vi.vis_bench_state() === 1; i++) {
+    seen.add(vi.vis_bench_view());
+    vi.vis_frame(frameT, 640, 400, 1); runJobs(); frameT += 1000 / 30;
+  }
+  const text = new TextDecoder().decode(new Uint8Array(vi.memory.buffer, vi.vis_bench_text(), vi.vis_bench_len()));
+  check(vi.vis_bench_state() === 2 && seen.size === 8 && /OSCILLOSCOPE +30\.0/.test(text) && text.includes('SCORE'),
+    `benchmark: 8 scenes, table (${text.split('\r\n')[2]})`);
+  vi.vis_key(' '.charCodeAt(0));
+  check(vi.vis_bench_state() === 0, 'any key closes the benchmark result');
+}
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 process.exit(failed ? 1 : 0);

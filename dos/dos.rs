@@ -15,6 +15,7 @@
 //! address `p` is pointer `p - base` (the 4 GB limit makes this wrap around correctly).
 
 use crate::api::*;
+use crate::vis::ACT_BENCH;
 
 extern "C" {
     fn inb(port: u32) -> u32;
@@ -58,6 +59,11 @@ pub struct BootInfo {
     pub exc_err: u32,
     /// The DOS command line: a length byte followed by the text (PSP offset 80h).
     pub cmd_phys: u32,
+    /// Written here after a benchmark: offset and length of its table in the message
+    /// buffer; RTRACK.COM also writes that part to BENCH.TXT.
+    pub bench_off: u32,
+    /// See `bench_off`.
+    pub bench_len: u32,
 }
 
 /// Sound Blaster settings and state.
@@ -98,6 +104,8 @@ static mut PENDING: [f32; 10 * 1024] = [0.0; 10 * 1024];
 static mut PEND_META: [u32; 7] = [0; 7]; // order, row, pattern, speed, tempo, nch, t (ms)
 static mut LAST_T: f64 = 0.0;
 static mut QUIT_MS: f64 = 0.0; // > 0: quit at this playback time
+static mut BENCH_SECS: f64 = 0.0; // > 0: start the benchmark with this time per scene
+static mut BENCH_QUIT: bool = false; // quit when the benchmark has finished (RTRACK=B<n>)
 static mut SPEC_TURN: u32 = 0;
 // watchdog: frames finished by the main loop, and its state in the interrupt
 static mut FRAMES_DONE: u32 = 0;
@@ -209,6 +217,13 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
             let c = *(o as *const u8) as u32;
             if c == 84 || c == 116 {
                 QUIT_MS = parse_num(o + 1, 10) as f64 * 1000.0;
+            } else if c == 66 || c == 98 {
+                // B<n>: benchmark with n seconds per scene, then quit (for automatic tests)
+                BENCH_SECS = parse_num(o + 1, 10) as f64;
+                if BENCH_SECS < 1.0 {
+                    BENCH_SECS = 15.0;
+                }
+                BENCH_QUIT = true;
             }
         }
         if !sb_reset() {
@@ -269,6 +284,9 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         vis_set_playing(1);
         clear_lut();
         log(b"Playback started\r\n");
+        if BENCH_SECS > 0.0 {
+            vis_bench_start(BENCH_SECS);
+        }
         sb_start();
         let ok = main_loop();
         sb_stop();
@@ -278,9 +296,32 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         }
         log(b"Stopped after ");
         log_dec(peek32(&raw const N_IRQ));
-        log(b" blocks (Sound Blaster interrupts).\r\nBye!\r\n");
+        log(b" blocks (Sound Blaster interrupts).\r\n");
+        log_bench(info_phys);
+        log(b"Bye!\r\n");
         0
     }
+}
+
+/// Appends the table of the last benchmark (if any) to the messages and tells RTRACK.COM
+/// where it is, so that it also writes it to BENCH.TXT.
+unsafe fn log_bench(info_phys: u32) {
+    let n = vis_bench_len() as usize;
+    if n == 0 {
+        return;
+    }
+    log(b"\r\n");
+    let start = LOG_N;
+    let p = vis_bench_text() as usize;
+    let mut i = 0;
+    while i < n {
+        log_byte(*((p + i) as *const u8) as u32);
+        i += 1;
+    }
+    let bi = &mut *(phys(info_phys) as *mut BootInfo);
+    bi.bench_off = start;
+    bi.bench_len = LOG_N - start;
+    log(b"(also written to BENCH.TXT)\r\n\r\n");
 }
 
 /// A hardware interrupt `irq` (0..15); dos/entry.asm saves the FPU state around it. The Sound
@@ -351,6 +392,10 @@ unsafe fn main_loop() -> bool {
         if QUIT_MS > 0.0 && now >= QUIT_MS {
             return true;
         }
+        let bench = vis_bench_state();
+        if bench == 2 && BENCH_QUIT {
+            return true;
+        }
         // a frame takes at least one vertical retrace (1/70 s): after 100 frames without
         // a single interrupt, interrupt or DMA channel of the card are not what we use
         if frame == 100 && peek32(&raw const N_IRQ) == 0 {
@@ -366,7 +411,9 @@ unsafe fn main_loop() -> bool {
         }
         frame += 1;
         convert_frame(fb);
-        wait_retrace();
+        if bench != 1 {
+            wait_retrace(); // the benchmark measures without waiting for the retrace (70 Hz)
+        }
         write_dac();
         show_frame();
         poke32(&raw mut FRAMES_DONE, frame);
@@ -390,6 +437,22 @@ unsafe fn read_key() -> i32 {
 unsafe fn handle_key(code: u32, ext: bool) -> bool {
     if code == 0x01 {
         return true;
+    }
+    if vis_bench_state() == 2 {
+        vis_bench_stop(); // any key closes the benchmark result
+        return false;
+    }
+    if code == 0x30 {
+        // b: start the benchmark from the beginning of the song, or cancel it
+        if vis_key(98) == ACT_BENCH {
+            irq_disable();
+            mp_set_position(0);
+            irq_enable();
+            poke32(&raw mut PAUSED, 0);
+            vis_set_playing(1);
+            vis_event(2);
+        }
+        return false;
     }
     if ext && (code == 0x4D || code == 0x4B) {
         irq_disable();
@@ -672,11 +735,14 @@ unsafe fn parse_options(p: usize) -> bool {
                 views = views | (1 << 4); // V
             } else if o == 87 {
                 views = views | (1 << 3); // W
+            } else if o == 66 {
+                BENCH_SECS = 15.0; // B
             } else {
                 log(b"RTRACK [options] [FILE.MOD]\r\n");
                 log(b"  /M  add the Mandelbrot zoom (slow)\r\n");
                 log(b"  /W  add the cube (slow)\r\n");
                 log(b"  /V  add the voxel landscape (very slow)\r\n");
+                log(b"  /B  benchmark: every view for 15 s, then a table (also in BENCH.TXT)\r\n");
                 log(b"  /?  this help\r\n");
                 return false;
             }
@@ -1160,11 +1226,13 @@ unsafe fn show_frame() {
 /// Plays `secs` seconds of a song without hardware (16-bit stereo 44.1 kHz into a buffer),
 /// drawing 70 frames per second, and writes the last frame as palette indices (64000
 /// bytes) followed by the palette (768 bytes, 0..255) to `out`. `view` 0..6 shows that view
-/// throughout, 7 steps through all of them, 8 shows the spectrum in 3D; plus 16 · n to draw
-/// only n frames per second, as on a slow PC. Used by dos/selftest.asm.
+/// throughout, 7 steps through all of them, 8 shows the spectrum in 3D, 9 runs the
+/// benchmark with one second per scene (the last frame shows its table); plus 16 · n to
+/// draw only n frames per second, as on a slow PC. Used by dos/selftest.asm.
 #[no_mangle]
 pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, out: *mut u8) -> u32 {
-    // view + 16 * fps: draw `fps` frames per second (default 70), like a slow PC;
+    // view (0..6, 7 = all in turn, 8 = spectrum 3D, 9 = benchmark with 1 s per scene)
+    // + 16 * fps: draw `fps` frames per second (default 70), like a slow PC;
     // + 4096: 8-bit mono at 22 kHz like a Sound Blaster Pro
     // + 8192: only the views without command-line options
     let defaults = view >= 8192;
@@ -1196,12 +1264,16 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         clear_lut();
         let mut views = 0;
         let target = if view == 8 { 2 } else { view }; // 8: the spectrum in 3D
-        while views < target && target < 7 {
+        let mut presses = 0;
+        while target < 7 && vis_current_view() != target && presses < 8 {
             vis_key(118);
-            views += 1;
+            presses += 1;
         }
         if view == 8 {
             vis_key(51);
+        }
+        if view == 9 {
+            vis_bench_start(1.0); // 9: benchmark with one second per scene
         }
         let frames = secs * fps;
         let mut f = 0;

@@ -25,7 +25,7 @@
   const rv = await RustVis(wasm), vi = rv.vi;                              // renderer instance
   let ctx = null, node = null, playing = false, song = null, ready = null, markReady = null;
   /** Action codes returned by vis_pointer / vis_key (see ACT_* in src/vis.rs). */
-  const ACT = { PLAY: 1, STOP: 2, OPEN: 3, FULLSCREEN: 4, SEEK: 5, LOOP: 7 };
+  const ACT = { PLAY: 1, STOP: 2, OPEN: 3, FULLSCREEN: 4, SEEK: 5, LOOP: 7, BENCH: 8 };
 
   /** Gives a song to the renderer (patterns, title) and, once it runs, to the worklet. */
   const load = (u8) => {
@@ -71,6 +71,7 @@
     [ACT.FULLSCREEN]: { run: () => toggleFullscreen(vi.vis_action_arg()) },
     [ACT.SEEK]: { audio: true, run: () => send({ type: 'seek', order: vi.vis_action_arg() }) },
     [ACT.LOOP]: { audio: true, run: () => send({ type: 'loop', on: !!vi.vis_action_arg() }) },
+    [ACT.BENCH]: { audio: true, run: () => { send({ type: 'seek', order: 0 }); vi.vis_event(2); setPlaying(true); } },
   };
   /** Carries out an action returned by the renderer (0 = nothing). */
   const act = async (a) => {
@@ -99,12 +100,23 @@
   await rv.startWorkers('mandel.wasm');
 
   /** One animation frame: let Rust draw at device resolution (max ~1 Mpx), show it. */
+  let benchShown = true;
   const frame = () => {
     requestAnimationFrame(frame);
-    const f = RustVis.frameSize(innerWidth, innerHeight);
-    rv.show(cv, g, vi.vis_frame(performance.now(), f.w, f.h, f.css));
+    const f = RustVis.frameSize(innerWidth, innerHeight), t0 = performance.now();
+    rv.show(cv, g, vi.vis_frame(t0, f.w, f.h, f.css));
     rv.jobs();
+    const st = vi.vis_bench_state();
+    if (st === 1) { vi.vis_bench_cost(performance.now() - t0); benchShown = false; }  // render time for "MS"
+    else if (st === 2 && !benchShown) { benchShown = true; console.log(rv.benchText()); }
   };
+  // ?bench or ?bench=SECONDS starts the benchmark with the first click or key
+  const bq = new URLSearchParams(location.search).get('bench');
+  if (bq !== null) {
+    const go = (e) => { e.stopPropagation(); removeEventListener('pointerdown', go, true); removeEventListener('keydown', go, true);
+      vi.vis_bench_start(Math.max(1, +bq || 15)); act(ACT.BENCH); };
+    addEventListener('pointerdown', go, true); addEventListener('keydown', go, true);
+  }
   frame();
 })();
 </script>

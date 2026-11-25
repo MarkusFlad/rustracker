@@ -24,7 +24,7 @@ onmessage = async (e) => {
 
 /**
  * Creates a renderer instance from the bytes of modplayer.wasm.
- * Returns { vi (the exports), load, push, startWorkers, jobs, show }.
+ * Returns { vi (the exports), load, push, startWorkers, jobs, show, benchText }.
  */
 async function RustVis(wasmBytes) {
   const vi = (await WebAssembly.instantiate(wasmBytes, {})).instance.exports;
@@ -94,7 +94,12 @@ async function RustVis(wasmBytes) {
     ctx.putImageData(new ImageData(new Uint8ClampedArray(vi.memory.buffer, p, fw * fh * 4), fw, fh), 0, 0);
   }
 
-  return { vi, load, push, startWorkers, jobs, show };
+  /** The result table of the last benchmark as a string (lines separated by \n). */
+  function benchText() {
+    return new TextDecoder().decode(new Uint8Array(vi.memory.buffer, vi.vis_bench_text(), vi.vis_bench_len())).replace(/\r/g, '');
+  }
+
+  return { vi, load, push, startWorkers, jobs, show, benchText };
 }
 
 /**

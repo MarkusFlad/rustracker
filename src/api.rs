@@ -386,6 +386,83 @@ pub extern "C" fn vis_set_views(mask: u32) {
     vis().set_views(mask)
 }
 
+/// Starts the benchmark (every scene for `secs` seconds, see `vis_bench.rs`). The page
+/// restarts the song and plays it; with [`vis_frame`] Rust switches the scenes itself.
+///
+/// # Arguments
+/// * `secs` - measuring time per scene in seconds
+#[no_mangle]
+pub extern "C" fn vis_bench_start(secs: f64) {
+    vis().bench_start(secs)
+}
+
+/// Cancels a running benchmark or closes its result.
+#[no_mangle]
+pub extern "C" fn vis_bench_stop() {
+    vis().bench_stop()
+}
+
+/// State of the benchmark.
+///
+/// # Returns
+/// 0 off, 1 running, 2 finished (the result is shown).
+#[no_mangle]
+pub extern "C" fn vis_bench_state() -> u32 {
+    vis().bench_state()
+}
+
+/// Render time of the last frame as measured by the page, for the "MS" column.
+///
+/// # Arguments
+/// * `ms` - milliseconds
+#[no_mangle]
+pub extern "C" fn vis_bench_cost(ms: f64) {
+    vis().bench_cost(ms)
+}
+
+/// For pages that draw the views themselves (the classic edition): one frame has finished.
+/// [`vis_frame`] does this itself.
+///
+/// # Arguments
+/// * `now` - time in ms
+/// * `cost` - render time of the frame that has just finished in ms, 0 if not measured
+///
+/// # Returns
+/// The scene (0..8) to draw next, or -1 when the benchmark is not running (any more).
+#[no_mangle]
+pub extern "C" fn vis_bench_tick(now: f64, cost: f64) -> i32 {
+    let v = vis();
+    v.bench_cost(cost);
+    v.bench_tick(now)
+}
+
+/// The scene to draw while the benchmark runs.
+///
+/// # Returns
+/// View number (as in [`vis_view`]) + 16 for the spectrum in 3D; 255 when not running.
+#[no_mangle]
+pub extern "C" fn vis_bench_view() -> u32 {
+    vis().bench_view()
+}
+
+/// The result table of the last benchmark (ASCII, lines end with CR LF).
+///
+/// # Returns
+/// Pointer to [`vis_bench_len`] bytes.
+#[no_mangle]
+pub extern "C" fn vis_bench_text() -> *const u8 {
+    vis().bench_text().0
+}
+
+/// Length of the result table.
+///
+/// # Returns
+/// Bytes; 0 before the first benchmark has finished.
+#[no_mangle]
+pub extern "C" fn vis_bench_len() -> u32 {
+    vis().bench_text().1 as u32
+}
+
 /// Width of the last frame.
 ///
 /// # Returns
@@ -412,7 +489,7 @@ pub extern "C" fn vis_height() -> i32 {
 ///
 /// # Returns
 /// The action for JS: 0 none, 1 play/pause, 2 stop, 3 open file, 4 fullscreen, 5 seek to
-/// `vis_action_arg()`, 7 loop on/off.
+/// `vis_action_arg()`, 7 loop on/off, 8 benchmark started (play the song from the start).
 #[no_mangle]
 pub extern "C" fn vis_pointer(x: i32, y: i32) -> i32 {
     vis().pointer(x, y)
@@ -425,7 +502,7 @@ pub extern "C" fn vis_pointer(x: i32, y: i32) -> i32 {
 ///
 /// # Returns
 /// The action for JS: 0 none, 1 play/pause, 2 stop, 3 open file, 4 fullscreen, 5 seek to
-/// `vis_action_arg()`, 7 loop on/off.
+/// `vis_action_arg()`, 7 loop on/off, 8 benchmark started (play the song from the start).
 #[no_mangle]
 pub extern "C" fn vis_key(code: u32) -> i32 {
     vis().key(code)
