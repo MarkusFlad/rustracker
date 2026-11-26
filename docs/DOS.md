@@ -266,8 +266,11 @@ mp_render (Replayer, Rust)       DMA-Puffer im konventionellen Speicher
   IRQ und DMA außerdem direkt aus den Mixer-Registern 80h und 81h der Karte und nimmt diese
   Werte, wenn sie von `BLASTER` abweichen; es meldet das beim Beenden. Ist kein 16-Bit-DMA-Kanal
   eingestellt, spielt es wie ein Sound Blaster Pro mit 8 Bit.
-* **Sound Blaster 16** (DSP-Version 4 oder höher): 44,1 kHz, 16 Bit, Stereo über den 16-Bit-
-  DMA-Kanal (meist 5). Programmiert werden Adresse, Seite und Länge des ganzen Puffers im
+* **Sound Blaster 16** (DSP-Version 4 oder höher): 22,05 kHz, mit `/H` 44,1 kHz, 16 Bit,
+  Stereo über den 16-Bit-DMA-Kanal (meist 5). Bis zur Messung auf dem Pentium 133 waren
+  44,1 kHz Standard; dort brauchte das Mischen aber über 40 % der Rechenzeit (siehe Testen). Bei
+  22 kHz ist es die Hälfte, und die Samples eines MOD-Moduls reichen selten über 16 kHz hinaus.
+  Das Oszilloskop zeigt bei 22 kHz einen doppelt so langen Ausschnitt. Programmiert werden Adresse, Seite und Länge des ganzen Puffers im
   DMA-Controller (Ports C4h–D8h, Seitenregister 8Bh), Modus „Auto-Init, Lesen“; dann am DSP die
   Abtastrate (Befehl 41h) und die Wiedergabe mit Befehl B6h (16 Bit, Auto-Init, FIFO), Modus 30h
   (Stereo, vorzeichenbehaftet) und der Länge einer Hälfte. Nach jeder Hälfte meldet sich die
@@ -283,9 +286,12 @@ mp_render (Replayer, Rust)       DMA-Puffer im konventionellen Speicher
   läuft sie gleichmäßig weiter, egal wie lange ein Bild zum Rendern braucht.
 * **Daten für die Anzeige.** Im selben Interrupt kopiert `capture` die Kanalsignale und das
   Summensignal des Blocks in einen Zwischenpuffer. Die Hauptschleife übernimmt sie in den
-  Renderer, wie im Browser die Nachrichten des AudioWorklets. Das Spektrum (eine FFT über 4096
-  Werte) berechnet sie nur für die Ansichten, die es zeigen (Spektrum, Würfel, See), und dort
-  jedes zweite Mal; auf einem Pentium 133 kostet es spürbar Zeit.
+  Renderer, wie im Browser die Nachrichten des AudioWorklets. Das Spektrum berechnet sie nur für
+  die Ansichten, die es zeigen (Spektrum, Würfel, See), und dort jedes zweite Mal; auf einem
+  Pentium 133 kostet es spürbar Zeit. Bei 22 kHz reicht eine FFT über 2048 Werte: Sie umfasst
+  dieselben 93 ms mit derselben Auflösung von 10,8 Hz wie 4096 Werte bei 44,1 kHz und kostet
+  weniger als die Hälfte. Der Renderer erwartet die Werte einer 4096-Punkte-FFT, deshalb werden
+  die 1025 Werte auf 2049 verteilt und dazwischen interpoliert.
 * **Die Uhr der Anzeige.** Welcher Moment gerade zu hören ist, ergibt sich aus der Zahl der
   Interrupts (fertige Hälften) und dem Stand des DMA-Zählers. Danach richten sich Oszilloskop,
   Pattern-Zeile und alle Effekte.
@@ -315,6 +321,7 @@ RTRACK [options] [FILE.MOD]
   /W  add the cube (slow)
   /V  add the voxel landscape (very slow)
   /B  benchmark: every view for 15 s, then a table (also in BENCH.TXT)
+  /H  sound at 44.1 kHz instead of 22 kHz (Sound Blaster 16, costs speed)
   /?  this help
 ```
 
@@ -361,6 +368,12 @@ steht in den Meldungen und in `BENCH.TXT`. In DOSBox gibt es den Zähler nur mit
   * Der erste Aufbau des Sees dauerte so lange, dass das Programm eingefroren wirkte. Seitdem
     werden die Uferfunktionen nur einmal pro Zelle berechnet, und ein Wachhund meldet, falls die
     Hauptschleife wirklich hängt.
+  * Der erste Benchmark (noch mit 44,1 kHz) ergab 12,5 Bilder pro Sekunde beim Oszilloskop,
+    11 beim Spektrum und 17 bei der Demoszene. Die Aufteilung zeigte, dass das Mischen im
+    Interrupt 42 % der Rechenzeit brauchte und die FFT bei Spektrum, Würfel und See weitere
+    rund 15 ms pro Bild; die Kopie in den VGA-Speicher dagegen nur 2,5 ms. Seitdem läuft der Ton
+    mit 22 kHz und die FFT über 2048 Werte. Im Testrahmen halbiert das die Befehle für das
+    Mischen und senkt die für die FFT auf etwa ein Viertel.
 * **Linux-Testrahmen** (`dos/selftest.asm`, `dos/selftest_check.py`). Derselbe Rust-Code läuft
   als 32-Bit-Linux-Programm: Der Interrupt wird simuliert, Port-Zugriffe tun nichts, die
   Ladeadresse ist 0. Das prüft Mischer, Renderer, Palette und Umrechnung und liefert für jede

@@ -110,6 +110,7 @@ static mut LAST_T: f64 = 0.0;
 static mut QUIT_MS: f64 = 0.0; // > 0: quit at this playback time
 static mut BENCH_SECS: f64 = 0.0; // > 0: start the benchmark with this time per scene
 static mut BENCH_QUIT: bool = false; // quit when the benchmark has finished (RTRACK=B<n>)
+static mut HIGH_RATE: bool = false; // /H: the Sound Blaster 16 at 44.1 kHz instead of 22.05 kHz
 static mut SPEC_TURN: u32 = 0;
 // watchdog: frames finished by the main loop, and its state in the interrupt
 static mut FRAMES_DONE: u32 = 0;
@@ -266,8 +267,12 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         if SB.sixteen {
             sb16_config();
         }
-        SB.rate = if SB.sixteen {
+        // 22.05 kHz unless /H: mixing at 44.1 kHz took over 40 % of a Pentium 133, and the
+        // samples of a MOD file rarely go above 16 kHz anyway
+        SB.rate = if SB.sixteen && HIGH_RATE {
             44100
+        } else if SB.sixteen {
+            22050
         } else {
             1_000_000 / (256 - (256 - 1_000_000 / 22050))
         };
@@ -706,19 +711,31 @@ unsafe fn commit_pending() {
     }
     poke32(&raw mut PEND_READY, 0);
     irq_enable();
-    // the 4096-point FFT costs a lot on a Pentium: only for the views that show the spectrum
+    // the FFT costs a lot on a Pentium: only for the views that show the spectrum
     // (spectrum, cube, lake), and there a new one every other slot; the others get silence
     let off = vis_spec_offset() as usize;
     let view = vis_current_view();
     if view == 2 || view == 3 || view == 5 {
         SPEC_TURN = SPEC_TURN ^ 1;
+        // 4096 points at 44.1 kHz; at 22 kHz 2048 points cover the same 93 ms with the same
+        // 10.8 Hz per bin for less than half the work. The renderer expects the bins of a
+        // 4096-point transform: the 1025 bins are spread over them, interpolated.
+        let big = SB.rate > 30000;
         if SPEC_TURN != 0 || SPEC_PTR == 0 {
-            SPEC_PTR = mp_spectrum(4096) as usize;
+            SPEC_PTR = mp_spectrum(if big { 4096 } else { 2048 }) as usize;
         }
         let sp = SPEC_PTR;
         i = 0;
         while i < 2049 {
-            *((slot + (off + i) * 4) as *mut f32) = *((sp + i * 4) as *const f32);
+            let v = if big {
+                *((sp + i * 4) as *const f32)
+            } else if i & 1 == 0 {
+                *((sp + i * 2) as *const f32)
+            } else {
+                let j = i / 2;
+                (*((sp + j * 4) as *const f32) + *((sp + j * 4 + 4) as *const f32)) * 0.5
+            };
+            *((slot + (off + i) * 4) as *mut f32) = v;
             i += 1;
         }
     } else {
@@ -926,12 +943,15 @@ unsafe fn parse_options(p: usize) -> bool {
                 views = views | (1 << 3); // W
             } else if o == 66 {
                 BENCH_SECS = 15.0; // B
+            } else if o == 72 {
+                HIGH_RATE = true; // H
             } else {
                 log(b"RTRACK [options] [FILE.MOD]\r\n");
                 log(b"  /M  add the Mandelbrot zoom (slow)\r\n");
                 log(b"  /W  add the cube (slow)\r\n");
                 log(b"  /V  add the voxel landscape (very slow)\r\n");
                 log(b"  /B  benchmark: every view for 15 s, then a table (also in BENCH.TXT)\r\n");
+                log(b"  /H  sound at 44.1 kHz instead of 22 kHz (Sound Blaster 16, costs speed)\r\n");
                 log(b"  /?  this help\r\n");
                 return false;
             }
@@ -1422,8 +1442,10 @@ unsafe fn show_frame() {
 pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, out: *mut u8) -> u32 {
     // view (0..6, 7 = all in turn, 8 = spectrum 3D, 9 = benchmark with 1 s per scene)
     // + 16 * fps: draw `fps` frames per second (default 70), like a slow PC;
-    // + 4096: 8-bit mono at 22 kHz like a Sound Blaster Pro
-    // + 8192: only the views without command-line options
+    // + 4096: 8-bit mono at 22 kHz like a Sound Blaster Pro (otherwise a Sound Blaster 16 at
+    //   22.05 kHz); + 8192: only the views without command-line options; + 16384: 44.1 kHz (/H)
+    let high = view >= 16384;
+    let view = view % 16384;
     let defaults = view >= 8192;
     let view = view % 8192;
     let pro = view >= 4096;
@@ -1439,8 +1461,10 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         SB.sixteen = !pro;
         SB.rate = if pro {
             1_000_000 / (1_000_000 / 22050)
-        } else {
+        } else if high {
             44100
+        } else {
+            22050
         };
         static mut FAKE_DMA: [u8; 16384] = [0; 16384];
         if !setup_dma_buffer((&raw const FAKE_DMA) as u32, 16384) {

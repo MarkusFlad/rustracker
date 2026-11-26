@@ -12,6 +12,8 @@ Options:  /M   add the Mandelbrot zoom
           /B   benchmark: every view for 15 s, then a table of frames per
                second on the screen and in BENCH.TXT; on a Pentium BENCH.TXT
                and the messages after Esc also show where the time goes
+          /H   sound at 44.1 kHz instead of 22 kHz (Sound Blaster 16; mixing
+               at 44.1 kHz takes about 40 % of a Pentium 133)
           /?   help
           These views are too demanding for a Pentium 133 (Mandelbrot and
           voxel take several seconds per frame), so they are left out unless
@@ -35,7 +37,7 @@ Requirements
     a few frames per second there.
   * 16 MB RAM (the program needs about 10 MB of extended memory)
   * VGA
-  * Sound Blaster 16 (44.1 kHz stereo, 16 bit) or Sound Blaster 2.0/Pro
+  * Sound Blaster 16 (22 kHz stereo, 16 bit; 44.1 kHz with /H) or Sound Blaster 2.0/Pro
     (22 kHz mono, 8 bit). The settings come from the BLASTER variable, e.g.
     SET BLASTER=A220 I5 D1 H5 T6; a Sound Blaster 16 also reports its IRQ and
     DMA itself.

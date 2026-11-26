@@ -330,7 +330,7 @@ Gleitkomma auf der x87-FPU). Dazu kommen ein paar hundert Zeilen DOS-Schicht:
 |---|---|
 | `dos/stub.asm` | `RTRACK.COM`, 16-Bit-Lader: lädt `RTRACK.BIN` und den Song über XMS (oder INT 15h) in den Erweiterungsspeicher, reserviert den DMA-Puffer, schaltet VGA-Modus 13h ein und springt in den 32-Bit-Protected-Mode; danach stellt es Real Mode, Interrupt-Controller und Textmodus wieder her und zeigt die Meldungen des Programms |
 | `dos/entry.asm` | 32-Bit-Einstieg: Interrupt-Tabelle, Interrupt-Controller auf 20h–2Fh, FPU-Zustand im Interrupt sichern, Ports für Rust |
-| `dos/dos.rs` | Sound Blaster 16 (44,1 kHz Stereo, 16 Bit) oder 2.0/Pro (22 kHz Mono, 8 Bit) mit Auto-Init-DMA, gemischt im Interrupt; Tastatur; Umrechnung der RGBA-Bilder auf eine Palette, die dem Bild folgt (die 256 häufigsten Farben aus den 262 144 der VGA, die übrigen auf die nächstliegende abgebildet, ohne Dithering); Anzeige im vertikalen Strahlrücklauf |
+| `dos/dos.rs` | Sound Blaster 16 (22,05 kHz Stereo, 16 Bit; mit `/H` 44,1 kHz) oder 2.0/Pro (22 kHz Mono, 8 Bit) mit Auto-Init-DMA, gemischt im Interrupt; Tastatur; Umrechnung der RGBA-Bilder auf eine Palette, die dem Bild folgt (die 256 häufigsten Farben aus den 262 144 der VGA, die übrigen auf die nächstliegende abgebildet, ohne Dithering); Anzeige im vertikalen Strahlrücklauf |
 | `dos/rt.asm` | `memcpy` und Co., die der Compiler aufruft |
 | `dos/rtrack.rs` | Crate-Wurzel: bindet `src/` mit `--cfg dos` ein (kleine Puffer, Linien in Festkomma statt vieler langsamer Gleitkomma-Umwandlungen) |
 | `dos/selftest.asm` | Linux-Testrahmen (i386): spielt ohne Hardware und schreibt das letzte Bild |
@@ -344,8 +344,9 @@ python3 dos/selftest_check.py www/drozerix_-_neon_techno.mod /tmp/dos   # alle A
 dos/package.sh /tmp/dos-site                            # ZIP und Seite
 ```
 
-Auf dem PC: `RTRACK [/M] [/W] [/V] [/B] [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet).
-`/B` startet den [Benchmark](#benchmark).
+Auf dem PC: `RTRACK [/M] [/W] [/V] [/B] [/H] [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet).
+`/B` startet den [Benchmark](#benchmark). Der Ton läuft mit 22 kHz, weil das Mischen mit 44,1 kHz
+auf dem Pentium 133 über 40 % der Rechenzeit brauchte; `/H` schaltet 44,1 kHz ein.
 Mandelbrot-Zoom (`/M`), Würfel (`/W`) und Voxel-Landschaft (`/V`) sind für einen Pentium 133 zu
 aufwendig und deshalb nur auf Wunsch dabei. Nötig sind
 16 MB RAM (das Programm belegt etwa 10 MB), die Variable `BLASTER` und DOS im Real Mode:
