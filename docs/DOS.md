@@ -208,7 +208,12 @@ das Programm keine weiteren Segmente.
    sein Array `fb: [u32; FB_PIXELS]`, ein Feld im großen statischen Zustand `VIS` (also in der
    BSS des Abbilds): 320 × 200 Pixel im Format RGBA, je 32 Bit. Das ist exakt derselbe Code wie
    im Browser, wo dieses Array über JavaScript in ein Canvas kopiert wird. Zurück kommt ein
-   Zeiger auf das Array.
+   Zeiger auf das Array. Jedes Bild neu gezeichnet wird nur die Ansicht. Knopfleiste und
+   Seitenleiste zeichnet der Renderer nur, wenn sich ihr Inhalt geändert hat; die Statuszeile
+   und die Pattern-Zeilen also bei jeder neuen Zeile, Titel und Order-Liste nur bei einer neuen
+   Position. Sonst bleiben die Pixel vom letzten Bild im Array stehen. Welche Bereiche sich
+   geändert haben (die Ansicht und bis zu drei weitere), meldet er über `vis_dirty_count` und
+   `vis_dirty_rect`.
 2. **Palette wählen** (`update_palette`, alle vier Bilder). VGA zeigt in Modus 13h 256 Farben
    gleichzeitig, jede frei wählbar aus 262 144 (6 Bit pro Grundfarbe). Das Programm zählt, wie
    oft jede Farbe im Bild vorkommt, gerundet auf 5 Bit pro Grundfarbe (32 768 mögliche Farben).
@@ -216,8 +221,12 @@ das Programm keine weiteren Segmente.
    unten). Das geschieht alle acht Bilder. Farben, die schon einen Platz haben, behalten
    ihn; nur neue Farben ändern Einträge. So verschieben sich die Farben bereits angezeigter
    Pixel nicht.
-3. **Umrechnen** (`convert_frame`). Jedes RGBA-Pixel wird zu einem Byte, dem Palettenindex, im
-   Array `BACK: [u8; 64000]`. Farben mit eigenem Platz bekommen ihn direkt; die übrigen den
+3. **Umrechnen** (`convert_changed`). Jedes RGBA-Pixel der geänderten Bereiche wird zu einem
+   Byte, dem Palettenindex, im Array `BACK: [u8; 64000]`; die übrigen Bytes stimmen noch vom
+   letzten Bild. Nach einer Änderung der Palette rechnet das Programm das ganze Bild um, weil
+   dann jeder Index anders sein kann. Der Testrahmen kann bei jedem Bild prüfen, dass das
+   Ergebnis genau dem einer vollständigen Umrechnung entspricht (Ansicht + 32768); die CI tut
+   das. Farben mit eigenem Platz bekommen ihn direkt; die übrigen den
    Platz mit der nächstliegenden Farbe. Das Ergebnis wird je Farbe in einer Tabelle mit einem
    Byte pro Farbe zwischengespeichert (32 KB, klein genug für den Cache des Pentium; 255 heißt
    „noch nicht gesucht“), bis sich die Palette ändert. Hat ein Pixel dieselbe Farbe wie sein
@@ -229,8 +238,9 @@ das Programm keine weiteren Segmente.
    ein Wechsel unsichtbar.
 5. **Palette schreiben** (`write_dac`). Nur die geänderten Einträge: Index an Port 3C8h, dann
    Rot, Grün, Blau (je 6 Bit) an Port 3C9h.
-6. **Kopieren** (`show_frame`). Die 64 000 Bytes aus `BACK` gehen in 16 000 Zugriffen zu je
-   32 Bit an die physische Adresse A0000h. In Modus 13h ist der Grafikspeicher linear: Pixel
+6. **Kopieren** (`show_changed`). Die Bytes der geänderten Bereiche aus `BACK` gehen in
+   Zugriffen zu je 32 Bit an die physische Adresse A0000h, nach einer Palettenänderung alle
+   64 000. In Modus 13h ist der Grafikspeicher linear: Pixel
    (x, y) liegt bei A0000h + 320·y + x. Die Karte zeigt das ab dem nächsten Bildaufbau an.
 
 Modus 13h hat nur eine Bildseite. Das Kopieren dauert länger als der Strahlrücklauf, deshalb kann
@@ -374,6 +384,12 @@ steht in den Meldungen und in `BENCH.TXT`. In DOSBox gibt es den Zähler nur mit
     rund 15 ms pro Bild; die Kopie in den VGA-Speicher dagegen nur 2,5 ms. Seitdem läuft der Ton
     mit 22 kHz und die FFT über 2048 Werte. Im Testrahmen halbiert das die Befehle für das
     Mischen und senkt die für die FFT auf etwa ein Viertel.
+  * Der zweite Benchmark ergab 16,7 Bilder pro Sekunde beim Oszilloskop, 19 beim Spektrum und
+    27 bei der Demoszene (Gesamtwert 6,15 statt 4,38). Danach war der Renderer der größte
+    Posten; ein guter Teil davon ging in Knopfleiste, Seitenleiste und das Löschen des ganzen
+    Bildes. Seitdem werden diese nur bei Änderungen gezeichnet und umgerechnet. Im Testrahmen
+    spart das beim Oszilloskop ein Fünftel, bei der Demoszene drei Zehntel der Befehle für das
+    Zeichnen.
 * **Linux-Testrahmen** (`dos/selftest.asm`, `dos/selftest_check.py`). Derselbe Rust-Code läuft
   als 32-Bit-Linux-Programm: Der Interrupt wird simuliert, Port-Zugriffe tun nichts, die
   Ladeadresse ist 0. Das prüft Mischer, Renderer, Palette und Umrechnung und liefert für jede

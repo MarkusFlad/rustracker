@@ -268,6 +268,18 @@ pub struct Vis {
     pub(crate) action_arg: i32,
     pub(crate) ready: bool,
     pub(crate) d_has_e: bool,
+    // what the last frame left in the framebuffer, so unchanged bar and panel parts are not
+    // drawn again (see `frame`), and the areas it changed
+    pub(crate) c_valid: bool,
+    pub(crate) c_off: bool,
+    pub(crate) c_bar: [u32; 10],
+    pub(crate) c_bar_h: i32,
+    pub(crate) c_top: [u32; 10],
+    pub(crate) c_rows: [u32; 8],
+    pub(crate) c_py0: i32,
+    pub(crate) song_gen: u32,
+    pub(crate) dirty_n: usize,
+    pub(crate) dirty: [i32; 16],
     // benchmark (see vis_bench.rs)
     pub(crate) bn_state: u32,
     pub(crate) bn_secs: f64,
@@ -436,6 +448,16 @@ impl Vis {
             action_arg: 0,
             ready: false,
             d_has_e: false,
+            c_valid: false,
+            c_off: false,
+            c_bar: [0; 10],
+            c_bar_h: 0,
+            c_top: [0; 10],
+            c_rows: [0; 8],
+            c_py0: 0,
+            song_gen: 0,
+            dirty_n: 0,
+            dirty: [0; 16],
             bn_state: 0,
             bn_secs: 0.0,
             bn_scene: 0,
@@ -683,6 +705,12 @@ impl Vis {
         self.d_order = -1;
         self.ended = false;
         self.dm_ready = false;
+        // the panel shows the new song
+        self.song_gen = if self.song_gen == 0xFFFF_FFFF {
+            0
+        } else {
+            self.song_gen + 1
+        };
     }
 
     /// Tells the renderer whether the song is playing (button label, animation of time-based
@@ -747,18 +775,95 @@ impl Vis {
     ///
     /// # Returns
     /// Pointer to the RGBA pixels (`width()`·`height()` u32, rows without padding).
+    ///
+    /// Only the view is drawn every frame. The button bar and the panel are drawn again only
+    /// when what they show has changed (the last frame's pixels stay in the framebuffer
+    /// otherwise); [`Vis::dirty_rect`] tells which areas changed, so the DOS edition converts
+    /// and copies only those.
     pub fn frame(&mut self, now: f64, w: i32, h: i32, css: f64, pl: &Player) -> *const u32 {
         self.bench_tick(now);
-        let (s, dt, cur) = self.begin_frame(now, w, h, css);
-        let bar_h = self.draw_bar(&s, 13 * self.fs); // the bar may wrap onto more rows
+        let (s, dt, cur) = self.begin_frame(now, w, h, css, false);
+        self.dirty_n = 0;
+        let fresh = !self.c_valid || self.c_off;
+        let bk = self.bar_key();
+        let bar_h = if fresh || !same(&bk, &self.c_bar) {
+            self.c_bar = bk;
+            self.c_bar_h = self.draw_bar(&s, 13 * self.fs); // the bar may wrap onto more rows
+            self.add_dirty(0, 0, self.w, self.c_bar_h);
+            self.c_bar_h
+        } else {
+            self.c_bar_h
+        };
         let (view, panel) = self.layout(bar_h);
         let vs = s.sub(view.x, view.y, view.w, view.h);
+        vs.clear(BG);
+        self.add_dirty(view.x, view.y, view.w, view.h);
         self.draw_view(&vs, now, dt, cur, pl);
         if panel.w > 0 && panel.h > 0 {
-            self.draw_panel(&s.sub(panel.x, panel.y, panel.w, panel.h), cur, pl);
+            let ps = s.sub(panel.x, panel.y, panel.w, panel.h);
+            self.draw_panel_cached(&ps, &panel, cur, pl, fresh);
         }
         self.draw_bench(&vs, &s);
+        // the benchmark result covers everything: draw it all again once it is closed
+        self.c_valid = self.bn_state != crate::vis_bench::BN_DONE;
+        if !self.c_valid {
+            self.dirty_n = 0;
+            self.add_dirty(0, 0, self.w, self.h);
+        }
         (&raw const self.fb) as *const u32
+    }
+
+    /// Notes that the last frame changed the rectangle (x, y, w, h).
+    pub(crate) fn add_dirty(&mut self, x: i32, y: i32, w: i32, h: i32) {
+        if w <= 0 || h <= 0 {
+            return;
+        }
+        if self.dirty_n >= 4 {
+            // more than four areas: the whole frame
+            self.dirty_n = 1;
+            self.dirty[0] = 0;
+            self.dirty[1] = 0;
+            self.dirty[2] = self.w;
+            self.dirty[3] = self.h;
+            return;
+        }
+        let i = self.dirty_n * 4;
+        self.dirty[i] = x;
+        self.dirty[i + 1] = y;
+        self.dirty[i + 2] = w;
+        self.dirty[i + 3] = h;
+        self.dirty_n += 1;
+    }
+
+    /// The areas the last frame changed.
+    ///
+    /// # Arguments
+    /// * `i` - area, `0 .. dirty_count()`
+    /// * `k` - 0 x, 1 y, 2 width, 3 height
+    ///
+    /// # Returns
+    /// The value in pixels; 0 for an area that does not exist.
+    pub fn dirty_rect(&self, i: usize, k: usize) -> i32 {
+        if i >= self.dirty_n || k > 3 {
+            return 0;
+        }
+        self.dirty[i * 4 + k]
+    }
+
+    /// Number of areas the last frame changed (see [`Vis::dirty_rect`]).
+    ///
+    /// # Returns
+    /// 1 to 4.
+    pub fn dirty_count(&self) -> usize {
+        self.dirty_n
+    }
+
+    /// Always draw bar and panel completely (for tests).
+    ///
+    /// # Arguments
+    /// * `off` - `true` to switch the caching off
+    pub fn set_cache_off(&mut self, off: bool) {
+        self.c_off = off;
     }
 
     /// Draws a single view filling the whole frame, without bar and panel: for pages that
@@ -786,21 +891,33 @@ impl Vis {
         pl: &Player,
     ) -> *const u32 {
         self.view = if view < N_VIEWS { view } else { V_LAKE };
-        let (s, dt, cur) = self.begin_frame(now, w, h, css);
+        let (s, dt, cur) = self.begin_frame(now, w, h, css, true);
+        self.c_valid = false; // bar and panel are gone
+        self.dirty_n = 0;
+        self.add_dirty(0, 0, self.w, self.h);
         self.draw_view(&s, now, dt, cur, pl);
         (&raw const self.fb) as *const u32
     }
 
-    /// Common start of a frame: size, first-time setup, time step, font scale, cleared
-    /// surface and the slot being heard.
-    fn begin_frame(&mut self, now: f64, w: i32, h: i32, css: f64) -> (Surface, f64, i32) {
+    /// Common start of a frame: size, first-time setup, time step, font scale, the surface
+    /// (cleared if `clear`) and the slot being heard.
+    fn begin_frame(
+        &mut self,
+        now: f64,
+        w: i32,
+        h: i32,
+        css: f64,
+        clear: bool,
+    ) -> (Surface, f64, i32) {
         self.set_size(w, h);
         self.init_once(now);
         let dt = clampf((now - self.last_t) / 1000.0, 0.0, 0.1);
         self.last_t = now;
         self.fs = font_scale(css, self.w, self.h);
         let s = Surface::new((&raw mut self.fb) as *mut u32, self.w, self.h);
-        s.clear(BG);
+        if clear {
+            s.clear(BG);
+        }
         let cur = self.cur_msg(now);
         (s, dt, cur)
     }
@@ -958,6 +1075,18 @@ impl Vis {
     }
 }
 
+/// `true` if both arrays hold the same values.
+pub(crate) fn same<const N: usize>(a: &[u32; N], b: &[u32; N]) -> bool {
+    let mut i = 0;
+    while i < N {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
 /// A rectangle in framebuffer pixels.
 pub(crate) struct Rect {
     pub(crate) x: i32,
@@ -1005,5 +1134,105 @@ mod tests {
         v.set_views(0); // the oscilloscope always stays; a disabled current view falls back
         assert_eq!(v.view, V_OSC);
         assert_eq!(v.next_view(V_OSC), V_OSC);
+    }
+
+    /// Bar and panel are only drawn when they change: every frame must still be the same as
+    /// a complete redraw, through views, sizes, keys, rows, a view_frame and the benchmark.
+    #[test]
+    fn cached_frames_match_full_redraws() {
+        static mut A: Vis = Vis::new();
+        static mut B: Vis = Vis::new();
+        let a = unsafe { &mut *(&raw mut A) };
+        let b = unsafe { &mut *(&raw mut B) };
+        b.set_cache_off(true);
+        let song = std::fs::read("www/drozerix_-_neon_techno.mod").unwrap();
+        let mut pl = Box::new(Player::empty());
+        let nch = pl.load(song.as_ptr(), song.len(), 44100.0) as usize;
+        let n = nch.min(VIS_CH);
+        let mut mix = vec![0f32; 2048];
+        let mut ch = vec![0f32; nch * 1024];
+        for v in [&mut *a, &mut *b] {
+            v.event(2);
+            v.set_playing(true);
+        }
+        // key presses: view, 3D, view (Mandelbrot), view (cube), ..., fullscreen and back, loop
+        let keys = [
+            118u32, 51, 118, 118, 118, 114, 118, 102, 102, 118, 108, 32, 32, 118,
+        ];
+        let (mut t, mut ft) = (0.0f64, 0.0f64);
+        let (mut compared, mut view_only, mut rows_only) = (0, 0, 0);
+        for block in 0..560 {
+            pl.render(mix.as_mut_ptr(), ch.as_mut_ptr(), 1024);
+            t += 1024.0 / 44.1;
+            for v in [&mut *a, &mut *b] {
+                let slot = v.slot_ptr();
+                unsafe {
+                    for c in 0..n {
+                        std::ptr::copy_nonoverlapping(
+                            ch.as_ptr().add(c * 1024),
+                            slot.add(c * 1024),
+                            1024,
+                        );
+                    }
+                    for i in 0..1024 {
+                        *slot.add(n * 1024 + i) = mix[2 * i];
+                        *slot.add((n + 1) * 1024 + i) = mix[2 * i + 1];
+                    }
+                }
+                v.commit(
+                    t,
+                    pl.order_pos as u32,
+                    pl.row as u32,
+                    pl.pattern() as u32,
+                    pl.speed,
+                    pl.tempo,
+                    n as u32,
+                    44100.0,
+                );
+            }
+            if block % 40 == 39 {
+                let k = keys[(block / 40) % keys.len()];
+                assert_eq!(a.key(k), b.key(k));
+            }
+            if block == 300 {
+                a.bench_start(1.0);
+                b.bench_start(1.0);
+            }
+            let (w, h) = if block < 280 { (320, 200) } else { (480, 300) };
+            while ft <= t {
+                if block == 200 {
+                    a.view_frame(V_LAKE, ft, w, h, 1.0, &pl);
+                    b.view_frame(V_LAKE, ft, w, h, 1.0, &pl);
+                }
+                let pa = a.frame(ft, w, h, 0.5, &pl);
+                let pb = b.frame(ft, w, h, 0.5, &pl);
+                let len = (a.width() * a.height()) as usize;
+                let fa = unsafe { std::slice::from_raw_parts(pa, len) };
+                let fb = unsafe { std::slice::from_raw_parts(pb, len) };
+                if let Some(i) = (0..len).find(|&i| fa[i] != fb[i]) {
+                    panic!(
+                        "block {block}, view {}: pixel ({}, {}) differs",
+                        a.view,
+                        i % w as usize,
+                        i / w as usize
+                    );
+                }
+                compared += 1;
+                if a.dirty_count() == 1 && a.dirty_rect(0, 2) < w {
+                    view_only += 1; // bar and panel as before
+                } else if a.dirty_count() == 3 {
+                    rows_only += 1; // status line and pattern rows
+                }
+                ft += 1000.0 / 20.0;
+            }
+            if a.bench_state() == crate::vis_bench::BN_DONE && block % 10 == 0 {
+                a.key(32);
+                b.key(32);
+            }
+        }
+        assert!(
+            compared > 250 && view_only > 50 && rows_only > 50,
+            "{compared} {view_only} {rows_only}"
+        );
     }
 }

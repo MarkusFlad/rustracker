@@ -473,6 +473,29 @@ pub extern "C" fn vis_bench_len() -> u32 {
     vis().bench_text().1 as u32
 }
 
+/// Number of areas the last [`vis_frame`] changed: the view always, bar and panel parts only
+/// when their content changed (the rest of the frame is as before).
+///
+/// # Returns
+/// 1 to 4.
+#[no_mangle]
+pub extern "C" fn vis_dirty_count() -> u32 {
+    vis().dirty_count() as u32
+}
+
+/// One of the areas the last frame changed.
+///
+/// # Arguments
+/// * `i` - area, `0 .. vis_dirty_count()`
+/// * `k` - 0 x, 1 y, 2 width, 3 height
+///
+/// # Returns
+/// Pixels.
+#[no_mangle]
+pub extern "C" fn vis_dirty_rect(i: u32, k: u32) -> i32 {
+    vis().dirty_rect(i as usize, k as usize)
+}
+
 /// Width of the last frame.
 ///
 /// # Returns

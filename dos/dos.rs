@@ -450,18 +450,20 @@ unsafe fn main_loop() -> bool {
             vis_set_fine(0); // coarse voxels (the renderer sets its defaults on the first frame)
             first = false;
         }
-        if frame % PALETTE_EVERY == 0 {
-            update_palette(fb);
+        // after a palette change, or on the first frame, everything is converted and copied
+        let mut all = frame == 0;
+        if frame % PALETTE_EVERY == 0 && update_palette(fb) {
+            all = true;
         }
         frame += 1;
-        convert_frame(fb);
+        convert_changed(fb, all);
         let c4 = tsc();
         if bench != 1 {
             wait_retrace(); // the benchmark measures without waiting for the retrace (70 Hz)
         }
         let c5 = tsc();
         write_dac();
-        show_frame();
+        show_changed(all);
         let c6 = tsc();
         poke32(&raw mut FRAMES_DONE, frame);
         let ms1 = audio_ms();
@@ -1223,7 +1225,7 @@ fn key15(c: u32) -> usize {
 }
 
 /// Counts the colours of frame `fb` and gives the most frequent 256 a palette slot.
-unsafe fn update_palette(fb: usize) {
+unsafe fn update_palette(fb: usize) -> bool {
     // histogram, and the list of colours that occur
     let mut n = 0usize;
     let mut i = 0;
@@ -1307,6 +1309,7 @@ unsafe fn update_palette(fb: usize) {
     if changed {
         clear_lut();
     }
+    changed
 }
 
 /// Empties the colour cache (all entries `UNKNOWN`).
@@ -1374,11 +1377,15 @@ unsafe fn nearest_slot(k: usize) -> u8 {
 /// RGBA framebuffer of the renderer -> palette indices. Neighbouring pixels often have the
 /// same colour (panel, backgrounds, doubled demo pixels): then the index is simply repeated.
 unsafe fn convert_frame(fb: usize) {
-    let back = (&raw mut BACK) as usize;
-    let mut last = *(fb as *const u32) ^ 1; // differs from the first pixel
+    convert_span(fb, (&raw mut BACK) as usize, 0, 64000);
+}
+
+/// Converts `n` pixels from index `i0` of the frame into palette indices at `back`.
+unsafe fn convert_span(fb: usize, back: usize, i0: usize, n: usize) {
+    let mut last = *((fb + i0 * 4) as *const u32) ^ 1; // differs from the first pixel
     let mut idx = 0u8;
-    let mut i = 0;
-    while i < 64000 {
+    let mut i = i0;
+    while i < i0 + n {
         let c = *((fb + i * 4) as *const u32);
         if c != last {
             last = c;
@@ -1386,6 +1393,29 @@ unsafe fn convert_frame(fb: usize) {
         }
         *((back + i) as *mut u8) = idx;
         i += 1;
+    }
+}
+
+/// Converts only the areas the renderer changed in this frame (bar and panel often stay as
+/// they were), unless `all`: after a palette change every pixel may need another index.
+unsafe fn convert_changed(fb: usize, all: bool) {
+    if all {
+        convert_frame(fb);
+        return;
+    }
+    let back = (&raw mut BACK) as usize;
+    let mut r = 0;
+    while r < vis_dirty_count() {
+        let x = vis_dirty_rect(r, 0) as usize;
+        let y = vis_dirty_rect(r, 1) as usize;
+        let w = vis_dirty_rect(r, 2) as usize;
+        let h = vis_dirty_rect(r, 3) as usize;
+        let mut row = y;
+        while row < y + h {
+            convert_span(fb, back, row * 320 + x, w);
+            row += 1;
+        }
+        r += 1;
     }
 }
 
@@ -1422,11 +1452,43 @@ unsafe fn wait_retrace() {
 }
 
 unsafe fn show_frame() {
+    copy_span(0, 64000);
+}
+
+/// Copies bytes `i0 .. i0 + n` of the picture into video memory, in whole 32-bit words.
+unsafe fn copy_span(i0: usize, n: usize) {
     let vram = phys(0xA0000);
-    let mut i = 0;
-    while i < 16000 {
-        *((vram + i * 4) as *mut u32) = *(((&raw const BACK) as usize + i * 4) as *const u32);
+    let back = (&raw const BACK) as usize;
+    let mut i = i0 / 4;
+    let end = (i0 + n + 3) / 4;
+    while i < end {
+        *((vram + i * 4) as *mut u32) = *((back + i * 4) as *const u32);
         i += 1;
+    }
+}
+
+/// Copies only the areas changed in this frame into video memory, unless `all`.
+unsafe fn show_changed(all: bool) {
+    if all {
+        show_frame();
+        return;
+    }
+    let mut r = 0;
+    while r < vis_dirty_count() {
+        let x = vis_dirty_rect(r, 0) as usize;
+        let y = vis_dirty_rect(r, 1) as usize;
+        let w = vis_dirty_rect(r, 2) as usize;
+        let h = vis_dirty_rect(r, 3) as usize;
+        if x == 0 && w == 320 {
+            copy_span(y * 320, h * 320); // whole rows in one go
+        } else {
+            let mut row = y;
+            while row < y + h {
+                copy_span(row * 320 + x, w);
+                row += 1;
+            }
+        }
+        r += 1;
     }
 }
 
@@ -1443,7 +1505,11 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
     // view (0..6, 7 = all in turn, 8 = spectrum 3D, 9 = benchmark with 1 s per scene)
     // + 16 * fps: draw `fps` frames per second (default 70), like a slow PC;
     // + 4096: 8-bit mono at 22 kHz like a Sound Blaster Pro (otherwise a Sound Blaster 16 at
-    //   22.05 kHz); + 8192: only the views without command-line options; + 16384: 44.1 kHz (/H)
+    //   22.05 kHz); + 8192: only the views without command-line options; + 16384: 44.1 kHz (/H);
+    // + 32768: check every frame that converting only the changed areas gives the same
+    //   picture as converting all of it (exit code 254 if not)
+    let check = view >= 32768;
+    let view = view % 32768;
     let high = view >= 16384;
     let view = view % 16384;
     let defaults = view >= 8192;
@@ -1514,10 +1580,22 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
             if f == 0 {
                 vis_set_fine(0);
             }
-            if f % PALETTE_EVERY == 0 {
-                update_palette(fb);
+            let mut all = f == 0;
+            if f % PALETTE_EVERY == 0 && update_palette(fb) {
+                all = true;
             }
-            convert_frame(fb);
+            convert_changed(fb, all);
+            if check {
+                // the partial conversion must give the same picture as a complete one
+                convert_span(fb, (&raw mut CHECK) as usize, 0, 64000);
+                let mut i = 0;
+                while i < 64000 {
+                    if CHECK[i] != BACK[i] {
+                        MISMATCH += 1;
+                    }
+                    i += 1;
+                }
+            }
             let c4 = tsc();
             // simulated time: the clock rate in the details is meaningless here
             bench_detail(
@@ -1555,11 +1633,16 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
             *((o + 2) as *mut u8) = (dac6(c & 31) << 2) as u8;
             i += 1;
         }
+        if check && MISMATCH > 0 {
+            return 254;
+        }
         MIXED
     }
 }
 
 static mut SELFTEST_LOG: [u8; 4096] = [0; 4096];
+static mut CHECK: [u8; 64000] = [0; 64000];
+static mut MISMATCH: u32 = 0;
 
 /// The messages of the last self-test (dos/selftest.asm prints them).
 ///

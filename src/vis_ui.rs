@@ -220,6 +220,91 @@ impl Vis {
         x + w + 3 * fs
     }
 
+    /// Everything the button bar depends on: when it is unchanged, the bar of the last
+    /// frame is still right.
+    pub(crate) fn bar_key(&self) -> [u32; 10] {
+        [
+            self.playing as u32,
+            self.view,
+            self.spec3d as u32,
+            self.vx_fine as u32,
+            self.looping as u32,
+            self.fullscreen as u32,
+            self.w as u32,
+            self.h as u32,
+            self.fs as u32,
+            1, // marks a filled key (the initial key is all zero)
+        ]
+    }
+
+    /// Draws the panel, or only the parts whose content has changed since the last frame
+    /// (`fresh`: all of it): the status line and the pattern rows change with every row,
+    /// title and order list rarely. Notes the redrawn areas (see `add_dirty`).
+    pub(crate) fn draw_panel_cached(
+        &mut self,
+        s: &Surface,
+        r: &Rect,
+        cur: i32,
+        pl: &Player,
+        fresh: bool,
+    ) {
+        let fs = self.fs;
+        let playing = cur >= 0;
+        let st = if playing {
+            self.msgs[cur as usize].copy()
+        } else {
+            idle_msg(pl)
+        };
+        let top = [
+            r.x as u32,
+            r.y as u32,
+            r.w as u32,
+            r.h as u32,
+            fs as u32,
+            self.song_gen,
+            self.ended as u32,
+            if playing { st.order + 1 } else { 0 },
+            pl.song_len as u32,
+            1,
+        ];
+        let rows = [
+            st.order,
+            st.row,
+            st.pattern,
+            st.speed,
+            st.tempo,
+            playing as u32,
+            pl.channels as u32,
+            1,
+        ];
+        if fresh || !same(&top, &self.c_top) {
+            self.c_top = top;
+            self.c_rows = rows;
+            self.draw_panel(s, cur, pl);
+            self.add_dirty(r.x, r.y, r.w, r.h);
+            return;
+        }
+        if same(&rows, &self.c_rows) {
+            return;
+        }
+        self.c_rows = rows;
+        // the same steps as in draw_panel, limited to the two areas
+        let lh = 9 * fs;
+        let chars = (s.w - 4 * fs) / (6 * fs);
+        let sy0 = 3 * fs + lh; // status line
+        let sy1 = 3 * fs + 2 * lh + 2 * fs; // start of the order list
+        s.fill(0, sy0, s.w, sy1 - sy0, PANEL);
+        s.vline(0, sy0, sy1 - 1, LINE, 256);
+        draw_status(s, &st, fs, chars >= 40);
+        self.add_dirty(r.x, r.y + sy0, r.w, sy1 - sy0);
+        let py0 = self.c_py0;
+        let ry0 = py0 - 2 * fs + 1; // below the line above the pattern rows
+        s.fill(0, ry0, s.w, s.h - ry0, PANEL);
+        s.vline(0, ry0, s.h - 1, LINE, 256);
+        draw_pattern_rows(s, pl, &st, playing, py0, fs, chars);
+        self.add_dirty(r.x, r.y + ry0, r.w, s.h - ry0);
+    }
+
     /// Draws the button bar (wrapping onto more rows when narrow); returns its height.
     pub(crate) fn draw_bar(&mut self, s: &Surface, bar_h: i32) -> i32 {
         let fs = self.fs;
@@ -325,6 +410,7 @@ impl Vis {
         let order = if cur >= 0 { st.order as i32 } else { -1 };
         let rows_used = self.draw_order_list(s, pl, oy, order);
         let py0 = oy + rows_used * lh + 3 * fs;
+        self.c_py0 = py0;
         s.hline(0, s.w - 1, py0 - 2 * fs, LINE, 256);
         draw_pattern_rows(s, pl, &st, cur >= 0, py0, fs, chars);
     }

@@ -286,6 +286,11 @@ dort ist **MS** die aussagekräftigere Spalte. Die klassische Edition zeichnet W
 Mandelbrot-Zoom (WebGL) zum Teil auf der GPU, deren Arbeit in MS nicht enthalten ist. Unter DOS
 wartet der Benchmark nicht auf den Strahlrücklauf, sonst wäre bei 70 Bildern pro Sekunde Schluss.
 
+Was die Messungen auf dem Pentium 133 gebracht haben, steht in [docs/DOS.md](docs/DOS.md#testen):
+Ton mit 22 kHz, eine kleinere FFT, und Knopfleiste und Seitenleiste werden nur noch neu
+gezeichnet, wenn sich ihr Inhalt ändert (in allen Editionen; der Test
+`cached_frames_match_full_redraws` prüft, dass jedes Bild dabei genau gleich bleibt).
+
 Die Abläufe und die Tabelle stehen in `src/vis_bench.rs` und sind für alle Editionen dieselben:
 In der Framebuffer- und der DOS-Edition schaltet Rust die Szenen selbst um, die klassische
 Edition fragt Rust nach der Szene (`vis_bench_tick`, `vis_bench_view`) und zeichnet sie selbst.
