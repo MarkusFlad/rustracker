@@ -111,6 +111,11 @@ static mut QUIT_MS: f64 = 0.0; // > 0: quit at this playback time
 static mut BENCH_SECS: f64 = 0.0; // > 0: start the benchmark with this time per scene
 static mut BENCH_QUIT: bool = false; // quit when the benchmark has finished (RTRACK=B<n>)
 static mut HIGH_RATE: bool = false; // /H: the Sound Blaster 16 at 44.1 kHz instead of 22.05 kHz
+static mut MODE13: bool = false; // /S: plain mode 13h, waiting for the retrace (no mode X)
+                                 // mode X: the page drawn next (0..2), and when the last two pages were put on screen (ms)
+static mut PAGE: u32 = 0;
+static mut T_FLIP1: f64 = -1000.0;
+static mut T_FLIP2: f64 = -1000.0;
 static mut SPEC_TURN: u32 = 0;
 // watchdog: frames finished by the main loop, and its state in the interrupt
 static mut FRAMES_DONE: u32 = 0;
@@ -317,6 +322,9 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         if BENCH_SECS > 0.0 {
             vis_bench_start(BENCH_SECS);
         }
+        if !MODE13 {
+            modex_init();
+        }
         sb_start();
         let ok = main_loop();
         sb_stop();
@@ -458,12 +466,18 @@ unsafe fn main_loop() -> bool {
         frame += 1;
         convert_changed(fb, all);
         let c4 = tsc();
-        if bench != 1 {
-            wait_retrace(); // the benchmark measures without waiting for the retrace (70 Hz)
+        let c5;
+        if MODE13 {
+            if bench != 1 {
+                wait_retrace(); // the benchmark measures without waiting for the retrace (70 Hz)
+            }
+            c5 = tsc();
+            write_dac();
+            show_changed(all);
+        } else {
+            c5 = tsc();
+            show_page();
         }
-        let c5 = tsc();
-        write_dac();
-        show_changed(all);
         let c6 = tsc();
         poke32(&raw mut FRAMES_DONE, frame);
         let ms1 = audio_ms();
@@ -586,7 +600,7 @@ unsafe fn log_details() {
     log(b"IN: audio data and FFT, DRAW: Rust renderer, PAL: palette and\r\n");
     log(b"conversion, VGA: copy to video memory (interrupts included in all four),\r\n");
     log(b"SND%: time in the sound interrupt, 70HZ: frames per second when waiting\r\n");
-    log(b"for the vertical retrace as in normal play.\r\n");
+    log(b"for the vertical retrace (mode 13h, option /S; mode X does not wait).\r\n");
 }
 
 /// Appends `v` with one decimal, right-aligned in 6 characters.
@@ -946,6 +960,8 @@ unsafe fn parse_options(p: usize) -> bool {
                 BENCH_SECS = 15.0; // B
             } else if o == 72 {
                 HIGH_RATE = true; // H
+            } else if o == 83 {
+                MODE13 = true; // S
             } else {
                 log(b"RTRACK [options] [FILE.MOD]\r\n");
                 log(b"  /M  add the Mandelbrot zoom (slow)\r\n");
@@ -953,6 +969,7 @@ unsafe fn parse_options(p: usize) -> bool {
                 log(b"  /V  add the voxel landscape (very slow)\r\n");
                 log(b"  /B  benchmark: every view for 15 s, then a table (also in BENCH.TXT)\r\n");
                 log(b"  /H  sound at 44.1 kHz instead of 22 kHz (Sound Blaster 16, costs speed)\r\n");
+                log(b"  /S  simple VGA mode 13h, waiting for the retrace (if mode X shows errors)\r\n");
                 log(b"  /?  this help\r\n");
                 return false;
             }
@@ -1376,22 +1393,40 @@ unsafe fn nearest_slot(k: usize) -> u8 {
 /// RGBA framebuffer of the renderer -> palette indices. Neighbouring pixels often have the
 /// same colour (panel, backgrounds, doubled demo pixels): then the index is simply repeated.
 unsafe fn convert_frame(fb: usize) {
-    convert_span(fb, (&raw mut BACK) as usize, 0, 64000);
+    convert_all(fb, (&raw mut BACK) as usize);
 }
 
-/// Converts `n` pixels from index `i0` of the frame into palette indices at `back`.
-unsafe fn convert_span(fb: usize, back: usize, i0: usize, n: usize) {
-    let mut last = *((fb + i0 * 4) as *const u32) ^ 1; // differs from the first pixel
+/// Converts the whole frame into palette indices at `back` (layout as in `convert_row`).
+unsafe fn convert_all(fb: usize, back: usize) {
+    let mut y = 0;
+    while y < 200 {
+        convert_row(fb, back, y, 0, 320);
+        y += 1;
+    }
+}
+
+/// Converts pixels `x0 .. x0 + w` of row `y` into palette indices at `back`: in mode 13h one
+/// byte per pixel in screen order; in mode X sorted by plane like video memory, pixel (x, y)
+/// at (x mod 4) · 16000 + 80 · y + x / 4, so that each plane is copied in one piece.
+unsafe fn convert_row(fb: usize, back: usize, y: usize, x0: usize, w: usize) {
+    let row = fb + y * 320 * 4;
+    let mut last = *((row + x0 * 4) as *const u32) ^ 1; // differs from the first pixel
     let mut idx = 0u8;
-    let mut i = i0;
-    while i < i0 + n {
-        let c = *((fb + i * 4) as *const u32);
+    let planar = !MODE13;
+    let mut x = x0;
+    while x < x0 + w {
+        let c = *((row + x * 4) as *const u32);
         if c != last {
             last = c;
             idx = slot_for(key15(c));
         }
-        *((back + i) as *mut u8) = idx;
-        i += 1;
+        let o = if planar {
+            (x & 3) * 16000 + y * 80 + (x >> 2)
+        } else {
+            y * 320 + x
+        };
+        *((back + o) as *mut u8) = idx;
+        x += 1;
     }
 }
 
@@ -1411,7 +1446,7 @@ unsafe fn convert_changed(fb: usize, all: bool) {
         let h = vis_dirty_rect(r, 3) as usize;
         let mut row = y;
         while row < y + h {
-            convert_span(fb, back, row * 320 + x, w);
+            convert_row(fb, back, row, x, w);
             row += 1;
         }
         r += 1;
@@ -1436,6 +1471,77 @@ unsafe fn write_dac() {
             DIRTY[s] = 0;
         }
         s += 1;
+    }
+}
+
+/// Switches the VGA from mode 13h to the unchained 256-colour mode ("mode X" with 200 lines):
+/// the 256 KB of video memory become four planes of 64 KB, enough for four pictures of
+/// 320 × 200. Then the program draws into a page that is not on screen and only changes the
+/// start address, instead of copying into the visible picture during the retrace.
+unsafe fn modex_init() {
+    outb(0x3C4, 4); // sequencer: memory mode
+    outb(0x3C5, 0x06); // chain 4 off, odd/even off
+    outb(0x3D4, 0x14); // CRTC: underline location
+    outb(0x3D5, 0x00); // doubleword mode off
+    outb(0x3D4, 0x17); // CRTC: mode control
+    outb(0x3D5, 0xE3); // byte mode
+    outb(0x3C4, 2); // sequencer: map mask
+    outb(0x3C5, 0x0F); // all four planes
+    let vram = phys(0xA0000);
+    let mut i = 0;
+    while i < 16384 {
+        *((vram + i * 4) as *mut u32) = 0;
+        i += 1;
+    }
+    outb(0x3D4, 0x0D); // start address, low byte: 0 for every page
+    outb(0x3D5, 0);
+    outb(0x3D4, 0x0C);
+    outb(0x3D5, 0);
+    PAGE = 1;
+}
+
+/// Mode X: copies the picture into the next of three pages and puts it on screen.
+///
+/// The pages start at 0, 16 KB and 32 KB of each plane, so only the high byte of the
+/// start address changes (a half-written address cannot be latched). The VGA takes the new
+/// address at the next retrace; the page drawn now was put on screen three frames ago, and
+/// it is free as soon as a retrace has passed since the frame before last, which on a
+/// Pentium 133 is always the case. Changed palette entries are written in the retrace that
+/// shows the new page, so the old page never appears with the new colours.
+unsafe fn show_page() {
+    if audio_ms() - T_FLIP2 < 15.0 {
+        wait_retrace(); // faster than the screen: wait until the old page is gone
+    }
+    let vram = phys(0xA0000) + PAGE as usize * 16384;
+    let back = (&raw const BACK) as usize;
+    let mut p = 0;
+    while p < 4 {
+        outb(0x3C4, 2);
+        outb(0x3C5, 1 << (p as u32));
+        let src = back + p * 16000;
+        let mut i = 0;
+        while i < 4000 {
+            *((vram + i * 4) as *mut u32) = *((src + i * 4) as *const u32);
+            i += 1;
+        }
+        p += 1;
+    }
+    outb(0x3D4, 0x0C);
+    outb(0x3D5, PAGE * 64); // 16384 / 256
+    T_FLIP2 = T_FLIP1;
+    T_FLIP1 = audio_ms();
+    PAGE = if PAGE == 2 { 0 } else { PAGE + 1 };
+    let mut dirty = false;
+    let mut s = 0;
+    while s < 256 {
+        if DIRTY[s] != 0 {
+            dirty = true;
+        }
+        s += 1;
+    }
+    if dirty {
+        wait_retrace();
+        write_dac();
     }
 }
 
@@ -1591,7 +1697,7 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
             convert_changed(fb, all);
             if check {
                 // the partial conversion must give the same picture as a complete one
-                convert_span(fb, (&raw mut CHECK) as usize, 0, 64000);
+                convert_all(fb, (&raw mut CHECK) as usize);
                 let mut i = 0;
                 while i < 64000 {
                     if CHECK[i] != BACK[i] {
@@ -1625,7 +1731,13 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         }
         let mut i = 0;
         while i < 64000 {
-            *((out as usize + i) as *mut u8) = BACK[i];
+            let (x, y) = (i % 320, i / 320);
+            let o = if MODE13 {
+                i
+            } else {
+                (x & 3) * 16000 + y * 80 + (x >> 2)
+            };
+            *((out as usize + i) as *mut u8) = BACK[o];
             i += 1;
         }
         i = 0;

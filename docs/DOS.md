@@ -4,7 +4,7 @@ Dieses Dokument beschreibt, wie der Rustracker auf einem PC unter DOS läuft: we
 Assembler geschrieben sind und warum, welche in Rust, wie das Programm geladen und gestartet
 wird und welchen Weg Bild und Ton von Rust bis zur VGA-Karte und zum Sound Blaster nehmen.
 
-Ziel war ein Pentium (gedacht ist ein Pentium 133) mit VGA (Modus 13h, 320 × 200 Pixel, 256
+Ziel war ein Pentium (gedacht ist ein Pentium 133) mit VGA (320 × 200 Pixel im Mode X, 256
 Farben) und Sound Blaster 16 oder 2.0/Pro, unter DOS ohne Speichermanager. In DOSBox läuft das
 Programm genauso.
 
@@ -193,7 +193,7 @@ physisch
 00000000  Interrupt-Tabelle des Real Mode, BIOS-Daten, DOS
           RTRACK.COM (Code, Daten, Meldungspuffer, 32-KB-Lesepuffer)
           DMA-Puffer (32 KB, davon 8 KB benutzt)
-000A0000  VGA-Grafikspeicher (Modus 13h: 64 000 Bytes, ein Byte pro Pixel)
+000A0000  VGA-Grafikspeicher (64 KB; im Mode X vier Ebenen mit drei Bildseiten)
 00100000  HMA (bleibt frei)
 00110000  RTRACK.BIN, falls kein XMS (mit XMS: wo HIMEM.SYS den Block hinlegt)
             Code (~190 KB), Konstanten, Daten
@@ -240,19 +240,32 @@ das Programm keine weiteren Segmente.
    linker Nachbar, was in Flächen, Schrift und verdoppelten Pixeln oft vorkommt, wird der Index
    einfach wiederholt. Dithering gibt es nicht mehr: Bei 256 passend gewählten Farben
    sind Verläufe sauber genug.
-4. **Auf den Strahlrücklauf warten** (`wait_retrace`). Das Programm fragt Port 3DAh ab, bis der
-   Elektronenstrahl unten angekommen ist und zurück nach oben läuft (Bit 3). In dieser Zeit ist
-   ein Wechsel unsichtbar.
+4. **Kopieren und umschalten** (`show_page`). Das Programm schaltet die VGA zu Beginn vom
+   Lader-Modus 13h in den unverketteten 256-Farben-Modus, den „Mode X“ der Demo- und
+   Spieleprogrammierer (hier mit 200 statt 240 Zeilen): Drei Register (Sequencer 4, CRTC 14h und
+   17h) machen aus den 256 KB Videospeicher vier Ebenen zu je 64 KB. Pixel (x, y) liegt in Ebene
+   x mod 4 an Stelle 80·y + x/4; welche Ebene ein Schreibzugriff trifft, wählt das Map-Mask-
+   Register (Sequencer 2). Darum liegt `BACK` im Mode X schon nach Ebenen sortiert vor, und jede
+   Ebene geht in einem Stück (4000 Zugriffe zu je 32 Bit) in den Videospeicher.
+   Eine Seite braucht 16 000 Bytes je Ebene, es passen also vier hinein. Das Programm nutzt drei,
+   bei 0, 16 KB und 32 KB. Es schreibt das neue Bild in eine Seite, die gerade nicht zu sehen
+   ist, und setzt dann die Startadresse der Anzeige (CRTC 0Ch/0Dh) auf diese Seite. Die Karte
+   übernimmt sie beim nächsten Strahlrücklauf: kein Warten, kein Zerreißen. Weil sich nur das
+   obere Byte der Startadresse ändert, kann die Karte keine halb geschriebene Adresse erwischen.
+   Die Seite, in die geschrieben wird, war drei Bilder vorher zu sehen; sie ist frei, sobald seit
+   dem vorletzten Umschalten ein Strahlrücklauf vorbei war. Ist ein Rechner schneller als die
+   70 Hz des Bildschirms, wartet das Programm in diesem Fall darauf (`wait_retrace`: Port 3DAh,
+   Bit 3).
 5. **Palette schreiben** (`write_dac`). Nur die geänderten Einträge: Index an Port 3C8h, dann
-   Rot, Grün, Blau (je 6 Bit) an Port 3C9h.
-6. **Kopieren** (`show_changed`). Die Bytes der geänderten Bereiche aus `BACK` gehen in
-   Zugriffen zu je 32 Bit an die physische Adresse A0000h, nach einer Palettenänderung alle
-   64 000. In Modus 13h ist der Grafikspeicher linear: Pixel
-   (x, y) liegt bei A0000h + 320·y + x. Die Karte zeigt das ab dem nächsten Bildaufbau an.
+   Rot, Grün, Blau (je 6 Bit) an Port 3C9h. Hat sich die Palette geändert, wartet das Programm
+   nach dem Umschalten auf den Strahlrücklauf und schreibt sie dann, also genau dann, wenn die
+   neue Seite erscheint. Sonst wäre die alte Seite kurz mit den neuen Farben zu sehen.
 
-Modus 13h hat nur eine Bildseite. Das Kopieren dauert länger als der Strahlrücklauf, deshalb kann
-im unteren Bildteil kurz eine Kante zu sehen sein. Der „Mode X“ der VGA hätte mehrere Seiten zum
-Umschalten, verlangt aber ein umständlicheres Schreiben in vier Ebenen.
+Mit `/S` bleibt die VGA im einfachen Modus 13h, falls eine Karte mit dem Mode X Probleme hat. Dort
+gibt es nur eine Bildseite: Das Programm wartet auf den Strahlrücklauf, schreibt die Palette und
+kopiert nur die geänderten Bereiche (`show_changed`) linear an A0000h + 320·y + x. Weil das
+Kopieren länger dauert als der Rücklauf, kann im unteren Bildteil kurz eine Kante zu sehen sein,
+und jedes Bild dauert eine ganze Zahl von Bildschirmdurchläufen (1/70 s).
 
 ## Der Weg des Klangs: vom Mischer über DMA zum Sound Blaster
 
@@ -340,6 +353,7 @@ RTRACK [options] [FILE.MOD]
   /V  add the voxel landscape (very slow)
   /B  benchmark: every view for 15 s, then a table (also in BENCH.TXT)
   /H  sound at 44.1 kHz instead of 22 kHz (Sound Blaster 16, costs speed)
+  /S  simple VGA mode 13h, waiting for the retrace (if mode X shows errors)
   /?  this help
 ```
 
@@ -403,6 +417,10 @@ steht in den Meldungen und in `BENCH.TXT`. In DOSBox gibt es den Zähler nur mit
     Seitdem mischt die DOS-Edition in Festkomma: In der inneren Schleife des Mischers gibt es
     keine Umwandlung von Gleitkomma in ganze Zahlen mehr, und das Ergebnis geht ohne Umweg über
     Gleitkomma in den DMA-Puffer.
+  * Der vierte Benchmark ergab 21,3 Bilder pro Sekunde beim Oszilloskop, 27 beim Spektrum und
+    42 bei der Demoszene (Gesamtwert 7,69; der Ton noch 12 %). Beim normalen Abspielen gingen
+    durch das Warten auf den Strahlrücklauf aber 15 bis 21 % davon verloren (Spalte 70HZ).
+    Seitdem zeigt die DOS-Edition ihre Bilder im Mode X mit drei Seiten und wartet nicht mehr.
 * **Linux-Testrahmen** (`dos/selftest.asm`, `dos/selftest_check.py`). Derselbe Rust-Code läuft
   als 32-Bit-Linux-Programm: Der Interrupt wird simuliert, Port-Zugriffe tun nichts, die
   Ladeadresse ist 0. Das prüft Mischer, Renderer, Palette und Umrechnung und liefert für jede
