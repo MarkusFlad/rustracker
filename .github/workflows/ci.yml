@@ -181,6 +181,8 @@ jobs:
             set +e; dos/out/selftest "$DEMO_SONG" /tmp/check.raw 30 $((32768 + v)) > /dev/null; r=$?; set -e
             [ $r -ne 254 ] && [ $r -ne 255 ] || { echo "view $v: exit $r"; exit 1; }
           done
+      - name: Self-test, the fixed-point mixer sounds like the float mixer
+        run: dos/out/selftest "$DEMO_SONG" /tmp/check.raw 60 10
       - name: DOSBox, Sound Blaster 16, 8 s of playback (dynamic core)
         # not yet a gate: emulator quirks should not block the deployment
         continue-on-error: true

@@ -13,7 +13,7 @@ Options:  /M   add the Mandelbrot zoom
                second on the screen and in BENCH.TXT; on a Pentium BENCH.TXT
                and the messages after Esc also show where the time goes
           /H   sound at 44.1 kHz instead of 22 kHz (Sound Blaster 16; mixing
-               at 44.1 kHz takes about 40 % of a Pentium 133)
+               twice as many samples costs speed)
           /?   help
           These views are too demanding for a Pentium 133 (Mandelbrot and
           voxel take several seconds per frame), so they are left out unless

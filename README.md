@@ -351,7 +351,8 @@ dos/package.sh /tmp/dos-site                            # ZIP und Seite
 
 Auf dem PC: `RTRACK [/M] [/W] [/V] [/B] [/H] [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet).
 `/B` startet den [Benchmark](#benchmark). Der Ton läuft mit 22 kHz, weil das Mischen mit 44,1 kHz
-auf dem Pentium 133 über 40 % der Rechenzeit brauchte; `/H` schaltet 44,1 kHz ein.
+auf dem Pentium 133 über 40 % der Rechenzeit brauchte; `/H` schaltet 44,1 kHz ein. Gemischt wird
+unter DOS in Festkomma, weil die x87-FPU für jede Umwandlung in eine ganze Zahl viele Takte braucht.
 Mandelbrot-Zoom (`/M`), Würfel (`/W`) und Voxel-Landschaft (`/V`) sind für einen Pentium 133 zu
 aufwendig und deshalb nur auf Wunsch dabei. Nötig sind
 16 MB RAM (das Programm belegt etwa 10 MB), die Variable `BLASTER` und DOS im Real Mode:

@@ -128,7 +128,14 @@ Für DOS gibt es mit `--cfg dos` nur wenige Abweichungen in `src/`:
 * höchstens ein Kurvenpunkt pro Pixelspalte im Oszilloskop (`vis_osc.rs`),
 * die Linien des 3D-Spektrums ebenfalls in Festkomma (`vis_spec.rs`),
 * Würfelflächen mit 128 × 128 statt 256 × 256 Pixeln und eine Mandelbrot-Fläche in halber
-  Auflösung mit kleinerem Rechenanteil pro Bild (`vis.rs`, `vis_cube.rs`, `vis_mandel.rs`).
+  Auflösung mit kleinerem Rechenanteil pro Bild (`vis.rs`, `vis_cube.rs`, `vis_mandel.rs`),
+* ein Mischer in Festkomma (`Player::render_int` in `replayer.rs`, `mp_render_int` in
+  `api.rs`): Position als ganze Zahl plus 32-Bit-Bruchteil, Lautstärke in 1/32768, Panorama in
+  1/4096, Summe in 32 Bit. Er macht dieselben Schritte wie der Gleitkomma-Mischer des Browsers
+  (lineare Interpolation, Lautstärkerampe, Loops); nur zwischen den Aufrufen bleibt der
+  Kanalzustand in Gleitkomma, damit die Effekte des Replayers unverändert bleiben. Der
+  Testrahmen vergleicht beide (Ansicht 10): Der Abstand liegt bei über 50 dB unter dem Signal,
+  also unter dem Rauschen der 8-Bit-Samples selbst.
 
 **Speziell für DOS (`dos/dos.rs`).**
 
@@ -254,9 +261,9 @@ PC (zwei 8237-Bausteine). Der Prozessor muss nur dafür sorgen, dass rechtzeitig
 bereitliegen.
 
 ```
-mp_render (Replayer, Rust)       DMA-Puffer im konventionellen Speicher
-  1024 Stereo-Frames f32  ──>   ┌──────────────┬──────────────┐
-  in i16 umgewandelt             │  Hälfte 0    │  Hälfte 1    │  je 1024 Frames
+mp_render_int (Replayer, Rust)   DMA-Puffer im konventionellen Speicher
+  1024 Stereo-Frames i32  ──>   ┌──────────────┬──────────────┐
+  auf i16 begrenzt               │  Hälfte 0    │  Hälfte 1    │  je 1024 Frames
   (im Interrupt)                 └──────────────┴──────────────┘
                                    ^ DMA-Controller liest im Kreis (Auto-Init)
                                    v
@@ -289,8 +296,9 @@ mp_render (Replayer, Rust)       DMA-Puffer im konventionellen Speicher
   Zeitkonstante (Befehl 40h), Blocklänge (48h) und Auto-Init-Wiedergabe (1Ch).
 * **Der Interrupt.** Der Einstieg in `entry.asm` rettet die Register und den FPU-Zustand, denn
   das Hauptprogramm könnte gerade mitten in einer Gleitkomma-Rechnung des Renderers sein, und
-  der Mischer rechnet ebenfalls in Gleitkomma. Dann ruft er `rust_irq` auf. Diese Funktion
-  bestätigt den Interrupt am DSP (Lesen von Port 22Fh bzw. 22Eh), mischt mit `mp_render` die
+  auch im Interrupt fällt etwas Gleitkomma an (Kanalsignale für die Anzeige, Zustand zwischen
+  den Ticks). Dann ruft er `rust_irq` auf. Diese Funktion
+  bestätigt den Interrupt am DSP (Lesen von Port 22Fh bzw. 22Eh), mischt mit `mp_render_int` die
   nächsten 1024 Frames in die Hälfte, die gerade abgespielt wurde, und schickt dem
   Interrupt-Controller das Ende des Interrupts (EOI). Weil die Musik so im Interrupt entsteht,
   läuft sie gleichmäßig weiter, egal wie lange ein Bild zum Rendern braucht.
@@ -390,6 +398,11 @@ steht in den Meldungen und in `BENCH.TXT`. In DOSBox gibt es den Zähler nur mit
     Bildes. Seitdem werden diese nur bei Änderungen gezeichnet und umgerechnet. Im Testrahmen
     spart das beim Oszilloskop ein Fünftel, bei der Demoszene drei Zehntel der Befehle für das
     Zeichnen.
+  * Der dritte Benchmark ergab 19,2 Bilder pro Sekunde beim Oszilloskop, 23 beim Spektrum und
+    37 bei der Demoszene (Gesamtwert 6,77). Der Ton brauchte weiter ein Fünftel der Rechenzeit.
+    Seitdem mischt die DOS-Edition in Festkomma: In der inneren Schleife des Mischers gibt es
+    keine Umwandlung von Gleitkomma in ganze Zahlen mehr, und das Ergebnis geht ohne Umweg über
+    Gleitkomma in den DMA-Puffer.
 * **Linux-Testrahmen** (`dos/selftest.asm`, `dos/selftest_check.py`). Derselbe Rust-Code läuft
   als 32-Bit-Linux-Programm: Der Interrupt wird simuliert, Port-Zugriffe tun nichts, die
   Ladeadresse ist 0. Das prüft Mischer, Renderer, Palette und Umrechnung und liefert für jede

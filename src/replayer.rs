@@ -82,6 +82,18 @@ fn rd_i8(m: *const u8, i: usize) -> f32 {
     unsafe { *((m as usize + i) as *const u8) as i8 as f32 }
 }
 
+/// Signed sample byte `i` of the module as an integer, -128..127 (DOS mixer).
+#[cfg(dos)]
+#[inline(always)]
+fn rd_s8(m: *const u8, i: usize) -> i32 {
+    let v = rd(m, i) as i32;
+    if v >= 128 {
+        v - 256
+    } else {
+        v
+    }
+}
+
 #[inline(always)]
 fn wr(p: *mut f32, i: usize, v: f32) {
     unsafe {
@@ -922,6 +934,129 @@ impl Player {
             self.samples_left -= n;
             done += n;
         }
+    }
+
+    /// DOS build: like [`Player::render`], but mixes in fixed point. The Pentium's x87 FPU
+    /// needs many cycles to turn a float into an integer (sample index, output value), and
+    /// at 44.1 kHz the float mixer took over 40 % of a Pentium 133.
+    ///
+    /// # Arguments
+    /// * `out` - receives `frames` interleaved stereo frames, full scale at ±32768 (not
+    ///   clamped)
+    /// * `chan_out` - receives each channel's signal as in [`Player::render`]
+    /// * `frames` - number of frames
+    #[cfg(dos)]
+    pub fn render_int(&mut self, out: *mut i32, chan_out: *mut f32, frames: usize) {
+        let nch = self.channels;
+        let mut i = 0;
+        while i < frames * 2 {
+            unsafe { *((out as usize + i * 4) as *mut i32) = 0 };
+            i += 1;
+        }
+        fill(chan_out, nch * frames, 0.0);
+        if nch == 0 {
+            return;
+        }
+        let mut done = 0;
+        while done < frames {
+            if self.samples_left == 0 && !self.next_tick() {
+                continue;
+            }
+            let n = umin(self.samples_left, frames - done);
+            let mut c = 0;
+            while c < nch {
+                self.mix_channel_int(c, done, n, frames, out, chan_out);
+                c += 1;
+            }
+            self.samples_left -= n;
+            done += n;
+        }
+    }
+
+    /// Mixes `n` samples of channel `c` from frame `start` in fixed point: position as
+    /// integer and 32-bit fraction, gain in 1/32768, panning in 1/4096. The same steps as
+    /// [`Player::mix_channel`]; the channel state stays in floats between calls.
+    #[cfg(dos)]
+    fn mix_channel_int(
+        &mut self,
+        c: usize,
+        start: usize,
+        n: usize,
+        frames: usize,
+        out: *mut i32,
+        chan_out: *mut f32,
+    ) {
+        let mut ms = MixSetup {
+            off: 0,
+            len: 0,
+            loop_start: 0,
+            loop_len: 0,
+            looped: false,
+            loop_end: 0.0,
+            step: 0.0,
+            target: 0.0,
+            gl: 0.0,
+            gr: 0.0,
+        };
+        if !self.mix_setup(c, &mut ms) {
+            return;
+        }
+        let m = self.m;
+        let ch = &mut self.ch[c];
+        let base = c * frames + start;
+        let mut ip = ch.pos as usize;
+        let mut fr = ((ch.pos - ip as f64) * 4294967296.0) as u32;
+        let si = ms.step as usize;
+        let sf = ((ms.step - si as f64) * 4294967296.0) as u32;
+        let lend = ms.loop_start + ms.loop_len;
+        let target = (ms.target * 32768.0) as i32;
+        let mut g = (ch.gain * 32768.0) as i32;
+        let gl = (ms.gl * 4096.0) as i32;
+        let gr = (ms.gr * 4096.0) as i32;
+        let mut i = 0;
+        while i < n {
+            g += (target - g) * 41 >> 11; // 0.02 per sample, like the float mixer
+            if !ch.active && g < 7 {
+                g = 0;
+                break;
+            }
+            let a = if ip < ms.len {
+                rd_s8(m, ms.off + ip)
+            } else {
+                0
+            };
+            let nx = ip + 1;
+            let b = if ms.looped && nx >= lend {
+                rd_s8(m, ms.off + ms.loop_start)
+            } else if nx < ms.len {
+                rd_s8(m, ms.off + nx)
+            } else {
+                0
+            };
+            let smp = (a << 8) + (((b - a) * (fr >> 16) as i32) >> 8);
+            let v = smp * g >> 15;
+            wr(chan_out, base + i, v as f32 * (1.0 / 32768.0));
+            let o = (out as usize + (start + i) * 8) as *mut i32;
+            unsafe {
+                *o += v * gl >> 12;
+                *((o as usize + 4) as *mut i32) += v * gr >> 12;
+            }
+            if ch.active {
+                let nf = fr + sf; // wraps around: the carry goes into the integer part
+                ip += si + if nf < fr { 1 } else { 0 };
+                fr = nf;
+                if ms.looped {
+                    while ip >= lend {
+                        ip -= ms.loop_len;
+                    }
+                } else if ip >= ms.len {
+                    ch.active = false;
+                }
+            }
+            i += 1;
+        }
+        ch.gain = g as f32 * (1.0 / 32768.0);
+        ch.pos = ip as f64 + fr as f64 * (1.0 / 4294967296.0);
     }
 
     /// Processes one tick and computes how many output samples it lasts;

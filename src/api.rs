@@ -113,6 +113,38 @@ pub extern "C" fn mp_render(frames: usize) -> *const f32 {
     mix as *const f32
 }
 
+/// DOS build: the fixed-point mix (see `Player::render_int`).
+#[cfg(dos)]
+static mut MIX_I: [i32; 2 * MAX_FRAMES] = [0; 2 * MAX_FRAMES];
+
+/// DOS build: like [`mp_render`], but mixed in fixed point: interleaved stereo with full
+/// scale at ±32768, not clamped. The channel signals are in [`mp_channels_ptr`] as usual.
+#[cfg(dos)]
+#[no_mangle]
+pub extern "C" fn mp_render_int(frames: usize) -> *const i32 {
+    let n = if frames > MAX_FRAMES {
+        MAX_FRAMES
+    } else {
+        frames
+    };
+    let mix = (&raw mut MIX_I) as *mut i32;
+    player().render_int(mix, (&raw mut CHAN) as *mut f32, n);
+    unsafe {
+        let ring = &mut *(&raw mut RING);
+        let mut pos = RING_POS;
+        let mut i = 0;
+        while i < n {
+            let l = *((mix as usize + 2 * i * 4) as *const i32);
+            let r = *((mix as usize + (2 * i + 1) * 4) as *const i32);
+            ring[pos] = (l + r) as f32 * (0.5 / 32768.0);
+            pos = (pos + 1) % FFT_MAX;
+            i += 1;
+        }
+        RING_POS = pos;
+    }
+    mix as *const i32
+}
+
 /// Appends the mono mix of `n` interleaved stereo frames to the spectrum ring.
 ///
 /// # Safety

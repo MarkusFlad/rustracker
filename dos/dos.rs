@@ -785,17 +785,16 @@ unsafe fn fill_half(h: u32) {
         }
         return;
     }
-    let mix = mp_render(BLOCK as usize) as usize;
+    let mix = mp_render_int(BLOCK as usize) as usize;
     let mut i = 0;
     while i < BLOCK as usize {
-        let l = *((mix + i * 8) as *const f32);
-        let r = *((mix + i * 8 + 4) as *const f32);
+        let l = *((mix + i * 8) as *const i32);
+        let r = *((mix + i * 8 + 4) as *const i32);
         if SB.sixteen {
-            *((dst + i * 4) as *mut i16) = to_i16(l);
-            *((dst + i * 4 + 2) as *mut i16) = to_i16(r);
+            *((dst + i * 4) as *mut i16) = clamp16(l) as i16;
+            *((dst + i * 4 + 2) as *mut i16) = clamp16(r) as i16;
         } else {
-            let m = (l + r) * 0.5;
-            *((dst + i) as *mut u8) = (to_i16(m) as i32 / 256 + 128) as u8;
+            *((dst + i) as *mut u8) = ((clamp16((l + r) >> 1) >> 8) + 128) as u8;
         }
         i += 1;
     }
@@ -803,15 +802,15 @@ unsafe fn fill_half(h: u32) {
     MIXED += 1;
 }
 
-fn to_i16(v: f32) -> i16 {
-    let x = v * 32767.0;
-    (if x > 32767.0 {
-        32767.0
-    } else if x < -32768.0 {
-        -32768.0
+/// `v` limited to the range of a 16-bit sample.
+fn clamp16(v: i32) -> i32 {
+    if v > 32767 {
+        32767
+    } else if v < -32768 {
+        -32768
     } else {
-        x
-    }) as i16
+        v
+    }
 }
 
 /// The block's channel scopes and master signal (like a worklet message).
@@ -826,8 +825,8 @@ unsafe fn capture(mix: usize) {
     }
     i = 0;
     while i < 1024 {
-        PENDING[n * 1024 + i] = *((mix + i * 8) as *const f32);
-        PENDING[(n + 1) * 1024 + i] = *((mix + i * 8 + 4) as *const f32);
+        PENDING[n * 1024 + i] = *((mix + i * 8) as *const i32) as f32 * (1.0 / 32768.0);
+        PENDING[(n + 1) * 1024 + i] = *((mix + i * 8 + 4) as *const i32) as f32 * (1.0 / 32768.0);
         i += 1;
     }
     PEND_META = [
@@ -1506,6 +1505,8 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
     // + 16 * fps: draw `fps` frames per second (default 70), like a slow PC;
     // + 4096: 8-bit mono at 22 kHz like a Sound Blaster Pro (otherwise a Sound Blaster 16 at
     //   22.05 kHz); + 8192: only the views without command-line options; + 16384: 44.1 kHz (/H);
+    // view 10: compare the fixed-point mixer with the float mixer (exit code 253 if they
+    //   differ by more than 1 %)
     // + 32768: check every frame that converting only the changed areas gives the same
     //   picture as converting all of it (exit code 254 if not)
     let check = view >= 32768;
@@ -1538,6 +1539,9 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         }
         if mp_load_ptr(m, len as usize, SB.rate as f32) <= 0 {
             return 2;
+        }
+        if view == 10 {
+            return mixer_check(m, len, secs);
         }
         vis_event(2);
         vis_set_playing(1);
@@ -1641,6 +1645,58 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
 }
 
 static mut SELFTEST_LOG: [u8; 4096] = [0; 4096];
+static mut REF_PLAYER: crate::replayer::Player = crate::replayer::Player::empty();
+static mut REF_MIX: [f32; 2048] = [0.0; 2048];
+static mut REF_CHAN: [f32; 32 * 1024] = [0.0; 32 * 1024];
+
+/// Self-test view 10: plays `secs` seconds with the fixed-point mixer and with the float
+/// mixer of the browser editions side by side and logs how far they differ. Returns 253 if
+/// the difference is more than 1 % of the signal (signal-to-difference ratio under 40 dB).
+unsafe fn mixer_check(m: *const u8, len: u32, secs: u32) -> u32 {
+    let rp = &mut *(&raw mut REF_PLAYER);
+    rp.load(m, len as usize, SB.rate as f32);
+    let blocks = secs * SB.rate / BLOCK;
+    let (mut sig, mut diff, mut worst) = (0.0f64, 0.0f64, 0.0f64);
+    let mut b = 0;
+    while b < blocks {
+        let mi = mp_render_int(BLOCK as usize) as usize;
+        rp.render(
+            (&raw mut REF_MIX) as *mut f32,
+            (&raw mut REF_CHAN) as *mut f32,
+            BLOCK as usize,
+        );
+        let mut i = 0;
+        while i < 2 * BLOCK as usize {
+            let f = REF_MIX[i] as f64 * 32768.0;
+            let d = *((mi + i * 4) as *const i32) as f64 - f;
+            sig += f * f;
+            diff += d * d;
+            let a = if d < 0.0 { 0.0 - d } else { d };
+            if a > worst {
+                worst = a;
+            }
+            i += 1;
+        }
+        b += 1;
+    }
+    let snr = if diff > 0.0 {
+        10.0 * crate::math::log10(sig / diff)
+    } else {
+        200.0
+    };
+    log(b"Mixer check: fixed point vs float over ");
+    log_dec(secs);
+    log(b" s: largest difference ");
+    log_dec(worst as u32);
+    log(b" of 32768, signal to difference ");
+    log_dec(snr as u32);
+    log(b" dB\r\n");
+    if snr < 40.0 {
+        253
+    } else {
+        0
+    }
+}
 static mut CHECK: [u8; 64000] = [0; 64000];
 static mut MISMATCH: u32 = 0;
 
