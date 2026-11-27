@@ -111,8 +111,8 @@ static mut QUIT_MS: f64 = 0.0; // > 0: quit at this playback time
 static mut BENCH_SECS: f64 = 0.0; // > 0: start the benchmark with this time per scene
 static mut BENCH_QUIT: bool = false; // quit when the benchmark has finished (RTRACK=B<n>)
 static mut HIGH_RATE: bool = false; // /H: the Sound Blaster 16 at 44.1 kHz instead of 22.05 kHz
-static mut MODE13: bool = false; // /S: plain mode 13h, waiting for the retrace (no mode X)
-                                 // mode X: the page drawn next (0..2), and when the last two pages were put on screen (ms)
+static mut MODEX: bool = false; // /X: mode X with three pages instead of mode 13h
+                                // mode X: the page drawn next (0..2), and when the last two pages were put on screen (ms)
 static mut PAGE: u32 = 0;
 static mut T_FLIP1: f64 = -1000.0;
 static mut T_FLIP2: f64 = -1000.0;
@@ -322,7 +322,7 @@ pub extern "C" fn rust_main(base: u32, info_phys: u32) -> u32 {
         if BENCH_SECS > 0.0 {
             vis_bench_start(BENCH_SECS);
         }
-        if !MODE13 {
+        if MODEX {
             modex_init();
         }
         sb_start();
@@ -467,7 +467,7 @@ unsafe fn main_loop() -> bool {
         convert_changed(fb, all);
         let c4 = tsc();
         let c5;
-        if MODE13 {
+        if !MODEX {
             if bench != 1 {
                 wait_retrace(); // the benchmark measures without waiting for the retrace (70 Hz)
             }
@@ -600,7 +600,7 @@ unsafe fn log_details() {
     log(b"IN: audio data and FFT, DRAW: Rust renderer, PAL: palette and\r\n");
     log(b"conversion, VGA: copy to video memory (interrupts included in all four),\r\n");
     log(b"SND%: time in the sound interrupt, 70HZ: frames per second when waiting\r\n");
-    log(b"for the vertical retrace (mode 13h, option /S; mode X does not wait).\r\n");
+    log(b"for the vertical retrace as in normal play (mode X with /X does not wait).\r\n");
 }
 
 /// Appends `v` with one decimal, right-aligned in 6 characters.
@@ -960,8 +960,8 @@ unsafe fn parse_options(p: usize) -> bool {
                 BENCH_SECS = 15.0; // B
             } else if o == 72 {
                 HIGH_RATE = true; // H
-            } else if o == 83 {
-                MODE13 = true; // S
+            } else if o == 88 {
+                MODEX = true; // X
             } else {
                 log(b"RTRACK [options] [FILE.MOD]\r\n");
                 log(b"  /M  add the Mandelbrot zoom (slow)\r\n");
@@ -969,7 +969,7 @@ unsafe fn parse_options(p: usize) -> bool {
                 log(b"  /V  add the voxel landscape (very slow)\r\n");
                 log(b"  /B  benchmark: every view for 15 s, then a table (also in BENCH.TXT)\r\n");
                 log(b"  /H  sound at 44.1 kHz instead of 22 kHz (Sound Blaster 16, costs speed)\r\n");
-                log(b"  /S  simple VGA mode 13h, waiting for the retrace (if mode X shows errors)\r\n");
+                log(b"  /X  VGA mode X with three pages instead of mode 13h (no waiting)\r\n");
                 log(b"  /?  this help\r\n");
                 return false;
             }

@@ -277,15 +277,15 @@ Unter DOS folgt eine zweite Tabelle, wenn die CPU einen Zeitstempelzähler hat (
 Befehl `RDTSC`). Sie teilt jedes Bild in Takten auf: Audiodaten und FFT (**IN**), der
 Rust-Renderer (**DRAW**), Palette und Umrechnung (**PAL**), Kopieren in den VGA-Speicher
 (**VGA**), dazu der Anteil des Sound-Interrupts (**SND%**) und die Bildrate, die mit Warten auf
-den Strahlrücklauf herauskäme (**70HZ**, so läuft der einfache Modus 13h mit `/S`; im Mode X
-wartet das Programm nicht). Die Taktfrequenz misst das
+den Strahlrücklauf herauskäme (**70HZ**, so läuft das normale Abspielen in Modus 13h; mit dem
+Mode X, Option `/X`, wartet das Programm nicht). Die Taktfrequenz misst das
 Programm selbst über die Abspielzeit des Sound Blasters. Diese Tabelle steht in den Meldungen
 nach dem Beenden und in `BENCH.TXT`, nicht auf dem Bildschirm.
 
 Im Browser begrenzt `requestAnimationFrame` die Bildrate auf die des Bildschirms (meist 60 Hz);
 dort ist **MS** die aussagekräftigere Spalte. Die klassische Edition zeichnet Würfel (CSS 3D) und
 Mandelbrot-Zoom (WebGL) zum Teil auf der GPU, deren Arbeit in MS nicht enthalten ist. Unter DOS
-wartet auch der Benchmark im Modus 13h (`/S`) nicht auf den Strahlrücklauf, sonst wäre bei
+wartet der Benchmark nicht auf den Strahlrücklauf, sonst wäre bei
 70 Bildern pro Sekunde Schluss.
 
 Was die Messungen auf dem Pentium 133 gebracht haben, steht in [docs/DOS.md](docs/DOS.md#testen):
@@ -337,7 +337,7 @@ Gleitkomma auf der x87-FPU). Dazu kommen ein paar hundert Zeilen DOS-Schicht:
 |---|---|
 | `dos/stub.asm` | `RTRACK.COM`, 16-Bit-Lader: lädt `RTRACK.BIN` und den Song über XMS (oder INT 15h) in den Erweiterungsspeicher, reserviert den DMA-Puffer, schaltet VGA-Modus 13h ein und springt in den 32-Bit-Protected-Mode; danach stellt es Real Mode, Interrupt-Controller und Textmodus wieder her und zeigt die Meldungen des Programms |
 | `dos/entry.asm` | 32-Bit-Einstieg: Interrupt-Tabelle, Interrupt-Controller auf 20h–2Fh, FPU-Zustand im Interrupt sichern, Ports für Rust |
-| `dos/dos.rs` | Sound Blaster 16 (22,05 kHz Stereo, 16 Bit; mit `/H` 44,1 kHz) oder 2.0/Pro (22 kHz Mono, 8 Bit) mit Auto-Init-DMA, gemischt im Interrupt; Tastatur; Umrechnung der RGBA-Bilder auf eine Palette, die dem Bild folgt (die 256 häufigsten Farben aus den 262 144 der VGA, die übrigen auf die nächstliegende abgebildet, ohne Dithering); Anzeige im Mode X mit drei Bildseiten |
+| `dos/dos.rs` | Sound Blaster 16 (22,05 kHz Stereo, 16 Bit; mit `/H` 44,1 kHz) oder 2.0/Pro (22 kHz Mono, 8 Bit) mit Auto-Init-DMA, gemischt im Interrupt; Tastatur; Umrechnung der RGBA-Bilder auf eine Palette, die dem Bild folgt (die 256 häufigsten Farben aus den 262 144 der VGA, die übrigen auf die nächstliegende abgebildet, ohne Dithering); Anzeige im Strahlrücklauf, mit `/X` im Mode X mit drei Bildseiten |
 | `dos/rt.asm` | `memcpy` und Co., die der Compiler aufruft |
 | `dos/rtrack.rs` | Crate-Wurzel: bindet `src/` mit `--cfg dos` ein (kleine Puffer, Linien in Festkomma statt vieler langsamer Gleitkomma-Umwandlungen) |
 | `dos/selftest.asm` | Linux-Testrahmen (i386): spielt ohne Hardware und schreibt das letzte Bild |
@@ -351,12 +351,12 @@ python3 dos/selftest_check.py www/drozerix_-_neon_techno.mod /tmp/dos   # alle A
 dos/package.sh /tmp/dos-site                            # ZIP und Seite
 ```
 
-Auf dem PC: `RTRACK [/M] [/W] [/V] [/B] [/H] [/S] [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet).
+Auf dem PC: `RTRACK [/M] [/W] [/V] [/B] [/H] [/X] [datei.mod]`, Tasten wie in der Framebuffer-Edition (Esc beendet).
 `/B` startet den [Benchmark](#benchmark). Der Ton läuft mit 22 kHz, weil das Mischen mit 44,1 kHz
 auf dem Pentium 133 über 40 % der Rechenzeit brauchte; `/H` schaltet 44,1 kHz ein. Gemischt wird
 unter DOS in Festkomma, weil die x87-FPU für jede Umwandlung in eine ganze Zahl viele Takte braucht.
-Angezeigt wird im Mode X mit drei Bildseiten, ohne auf den Strahlrücklauf zu warten; `/S` schaltet
-zurück auf den einfachen Modus 13h.
+Angezeigt wird in Modus 13h; `/X` schaltet auf den Mode X mit drei Bildseiten, der nicht auf den
+Strahlrücklauf wartet (auf dem Pentium 133 kaum schneller, aber interessant zum Vergleichen).
 Mandelbrot-Zoom (`/M`), Würfel (`/W`) und Voxel-Landschaft (`/V`) sind für einen Pentium 133 zu
 aufwendig und deshalb nur auf Wunsch dabei. Nötig sind
 16 MB RAM (das Programm belegt etwa 10 MB), die Variable `BLASTER` und DOS im Real Mode:

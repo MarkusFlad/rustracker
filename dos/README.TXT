@@ -14,8 +14,8 @@ Options:  /M   add the Mandelbrot zoom
                and the messages after Esc also show where the time goes
           /H   sound at 44.1 kHz instead of 22 kHz (Sound Blaster 16; mixing
                twice as many samples costs speed)
-          /S   simple VGA mode 13h instead of mode X with three pages (in case
-               your VGA card shows errors in mode X; waits for the retrace)
+          /X   VGA mode X with three pages instead of mode 13h: draws into a
+               hidden page and switches pages instead of waiting for the retrace
           /?   help
           These views are too demanding for a Pentium 133 (Mandelbrot and
           voxel take several seconds per frame), so they are left out unless
