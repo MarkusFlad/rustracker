@@ -1405,14 +1405,14 @@ unsafe fn convert_all(fb: usize, back: usize) {
     }
 }
 
-/// Converts pixels `x0 .. x0 + w` of row `y` into palette indices at `back`: in mode 13h one
-/// byte per pixel in screen order; in mode X sorted by plane like video memory, pixel (x, y)
-/// at (x mod 4) · 16000 + 80 · y + x / 4, so that each plane is copied in one piece.
+/// Converts pixels `x0 .. x0 + w` of row `y` into palette indices at `back`, one byte per
+/// pixel in screen order. (Sorting them by mode X plane right here doubled the time on the
+/// Pentium 133: four write streams 16 KB apart, and its cache does not take in written data.)
 unsafe fn convert_row(fb: usize, back: usize, y: usize, x0: usize, w: usize) {
     let row = fb + y * 320 * 4;
+    let out = back + y * 320;
     let mut last = *((row + x0 * 4) as *const u32) ^ 1; // differs from the first pixel
     let mut idx = 0u8;
-    let planar = !MODE13;
     let mut x = x0;
     while x < x0 + w {
         let c = *((row + x * 4) as *const u32);
@@ -1420,12 +1420,7 @@ unsafe fn convert_row(fb: usize, back: usize, y: usize, x0: usize, w: usize) {
             last = c;
             idx = slot_for(key15(c));
         }
-        let o = if planar {
-            (x & 3) * 16000 + y * 80 + (x >> 2)
-        } else {
-            y * 320 + x
-        };
-        *((back + o) as *mut u8) = idx;
+        *((out + x) as *mut u8) = idx;
         x += 1;
     }
 }
@@ -1500,7 +1495,9 @@ unsafe fn modex_init() {
     PAGE = 1;
 }
 
-/// Mode X: copies the picture into the next of three pages and puts it on screen.
+/// Mode X: copies the picture into the next of three pages and puts it on screen. Plane p
+/// holds the pixels with x mod 4 = p; four of them, 4 pixels apart in `BACK`, make one 32-bit
+/// write.
 ///
 /// The pages start at 0, 16 KB and 32 KB of each plane, so only the high byte of the
 /// start address changes (a half-written address cannot be latched). The VGA takes the new
@@ -1518,12 +1515,7 @@ unsafe fn show_page() {
     while p < 4 {
         outb(0x3C4, 2);
         outb(0x3C5, 1 << (p as u32));
-        let src = back + p * 16000;
-        let mut i = 0;
-        while i < 4000 {
-            *((vram + i * 4) as *mut u32) = *((src + i * 4) as *const u32);
-            i += 1;
-        }
+        gather_plane(back, p, vram);
         p += 1;
     }
     outb(0x3D4, 0x0C);
@@ -1542,6 +1534,22 @@ unsafe fn show_page() {
     if dirty {
         wait_retrace();
         write_dac();
+    }
+}
+
+/// Writes plane `p` of the picture `back` (one byte per pixel in screen order) to `dst`:
+/// 16 000 bytes, pixel (x, y) with x mod 4 = p at 80 · y + x / 4, in 32-bit writes.
+unsafe fn gather_plane(back: usize, p: usize, dst: usize) {
+    let mut src = back + p;
+    let mut i = 0;
+    while i < 4000 {
+        let b0 = *(src as *const u8) as u32;
+        let b1 = *((src + 4) as *const u8) as u32;
+        let b2 = *((src + 8) as *const u8) as u32;
+        let b3 = *((src + 12) as *const u8) as u32;
+        *((dst + i * 4) as *mut u32) = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+        src += 16;
+        i += 1;
     }
 }
 
@@ -1705,6 +1713,20 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
                     }
                     i += 1;
                 }
+                // and the mode X planes must hold every pixel where the VGA expects it
+                let planes = (&raw mut CHECK) as usize;
+                let mut p = 0;
+                while p < 4 {
+                    gather_plane((&raw const BACK) as usize, p, planes + p * 16000);
+                    p += 1;
+                }
+                i = 0;
+                while i < 64000 {
+                    if CHECK[(i & 3) * 16000 + (i >> 2)] != BACK[i] {
+                        MISMATCH += 1;
+                    }
+                    i += 1;
+                }
             }
             let c4 = tsc();
             // simulated time: the clock rate in the details is meaningless here
@@ -1731,13 +1753,7 @@ pub extern "C" fn rust_selftest(m: *const u8, len: u32, secs: u32, view: u32, ou
         }
         let mut i = 0;
         while i < 64000 {
-            let (x, y) = (i % 320, i / 320);
-            let o = if MODE13 {
-                i
-            } else {
-                (x & 3) * 16000 + y * 80 + (x >> 2)
-            };
-            *((out as usize + i) as *mut u8) = BACK[o];
+            *((out as usize + i) as *mut u8) = BACK[i];
             i += 1;
         }
         i = 0;

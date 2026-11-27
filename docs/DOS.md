@@ -245,8 +245,12 @@ das Programm keine weiteren Segmente.
    Spieleprogrammierer (hier mit 200 statt 240 Zeilen): Drei Register (Sequencer 4, CRTC 14h und
    17h) machen aus den 256 KB Videospeicher vier Ebenen zu je 64 KB. Pixel (x, y) liegt in Ebene
    x mod 4 an Stelle 80·y + x/4; welche Ebene ein Schreibzugriff trifft, wählt das Map-Mask-
-   Register (Sequencer 2). Darum liegt `BACK` im Mode X schon nach Ebenen sortiert vor, und jede
-   Ebene geht in einem Stück (4000 Zugriffe zu je 32 Bit) in den Videospeicher.
+   Register (Sequencer 2). `BACK` bleibt in Bildschirmreihenfolge; beim Kopieren fasst
+   `gather_plane` je vier Pixel einer Ebene, die in `BACK` vier Bytes auseinanderliegen, zu
+   einem 32-Bit-Zugriff zusammen (4000 je Ebene). Ein erster Versuch hat `BACK` schon bei der
+   Umrechnung nach Ebenen sortiert. Das verdoppelte auf dem Pentium 133 die Zeit der Umrechnung:
+   Die Pixel gingen abwechselnd in vier Bereiche 16 KB auseinander, und der Daten-Cache des
+   Pentium nimmt geschriebene Daten, die er noch nicht hat, nicht auf.
    Eine Seite braucht 16 000 Bytes je Ebene, es passen also vier hinein. Das Programm nutzt drei,
    bei 0, 16 KB und 32 KB. Es schreibt das neue Bild in eine Seite, die gerade nicht zu sehen
    ist, und setzt dann die Startadresse der Anzeige (CRTC 0Ch/0Dh) auf diese Seite. Die Karte
@@ -421,6 +425,13 @@ steht in den Meldungen und in `BENCH.TXT`. In DOSBox gibt es den Zähler nur mit
     42 bei der Demoszene (Gesamtwert 7,69; der Ton noch 12 %). Beim normalen Abspielen gingen
     durch das Warten auf den Strahlrücklauf aber 15 bis 21 % davon verloren (Spalte 70HZ).
     Seitdem zeigt die DOS-Edition ihre Bilder im Mode X mit drei Seiten und wartet nicht mehr.
+  * Der fünfte Benchmark, mit dem ersten Mode X, war langsamer: 17,2 statt 21,3 Bilder pro
+    Sekunde beim Oszilloskop, 27,8 statt 41,6 bei der Demoszene. Die Aufteilung zeigte warum:
+    Die Umrechnung auf die Palette brauchte in allen Ansichten rund 9 ms mehr, weil sie gleich
+    nach Ebenen sortiert schrieb, und das Kopieren 2 ms mehr, weil jede Seite das ganze Bild
+    braucht. Seitdem wird wieder in Bildschirmreihenfolge umgerechnet und erst beim Kopieren
+    nach Ebenen zusammengefasst. Der Testrahmen prüft dabei, dass jedes Pixel in der richtigen
+    Ebene an der richtigen Stelle landet.
 * **Linux-Testrahmen** (`dos/selftest.asm`, `dos/selftest_check.py`). Derselbe Rust-Code läuft
   als 32-Bit-Linux-Programm: Der Interrupt wird simuliert, Port-Zugriffe tun nichts, die
   Ladeadresse ist 0. Das prüft Mischer, Renderer, Palette und Umrechnung und liefert für jede
